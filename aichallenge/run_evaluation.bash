@@ -144,10 +144,10 @@ move_window() {
     done
     echo "AWSIMとRVizのウィンドウが見つかりました"
     # Move windows
-    wmctrl -a "RViz" && wmctrl -r "RViz" -e 0,0,0,1920,1043
-    sleep 1
-    wmctrl -a "AWSIM" && wmctrl -r "AWSIM" -e 0,0,0,900,1043
-    sleep 2
+    # wmctrl -a "RViz" && wmctrl -r "RViz" -e 0,0,0,1920,1043
+    # sleep 1
+    # wmctrl -a "AWSIM" && wmctrl -r "AWSIM" -e 0,0,0,900,1043
+    # sleep 2
 }
 
 # Trap Ctrl+C (SIGINT) and normal termination (EXIT)
