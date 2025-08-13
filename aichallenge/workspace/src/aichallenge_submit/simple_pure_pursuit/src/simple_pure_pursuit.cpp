@@ -61,7 +61,7 @@ void SimplePurePursuit::onTimer()
 
   // For base_link coordinate system trajectory, ego position is always (0,0,0)
   // Start from trajectory point 1 (trajectory[0] is current position at (0,0,0))
-  size_t closet_traj_point_idx = 0;  // Always use trajectory[0] as reference
+  size_t closest_traj_point_idx = 1;  // Always use trajectory[1] as reference
   
   // publish zero command
   AckermannControlCommand cmd = zeroAckermannControlCommand(get_clock()->now());
@@ -72,11 +72,11 @@ void SimplePurePursuit::onTimer()
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "trajectory too short");
   } else {
     // get trajectory point (use point 1 as target since point 0 is current position)
-    TrajectoryPoint closet_traj_point = trajectory_->points.at(std::min(closet_traj_point_idx + 1, trajectory_->points.size() - 1));
+    TrajectoryPoint closest_traj_point = trajectory_->points.at(std::min(closest_traj_point_idx, trajectory_->points.size() - 1));
 
     // calc longitudinal speed and acceleration
     double target_longitudinal_vel =
-      use_external_target_vel_ ? external_target_vel_ : closet_traj_point.longitudinal_velocity_mps;
+      use_external_target_vel_ ? external_target_vel_ : closest_traj_point.longitudinal_velocity_mps;
     double current_longitudinal_vel = odometry_->twist.twist.linear.x;
 
     cmd.longitudinal.speed = target_longitudinal_vel;
@@ -107,7 +107,7 @@ void SimplePurePursuit::onTimer()
     lookahead_point_msg.header.frame_id = "base_link";
     lookahead_point_msg.point.x = lookahead_point_x;
     lookahead_point_msg.point.y = lookahead_point_y;
-    lookahead_point_msg.point.z = closet_traj_point.pose.position.z;
+    lookahead_point_msg.point.z = closest_traj_point.pose.position.z;
     pub_lookahead_point_->publish(lookahead_point_msg);
 
     // calc steering angle for lateral control
