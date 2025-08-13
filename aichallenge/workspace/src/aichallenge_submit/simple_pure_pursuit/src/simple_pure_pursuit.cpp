@@ -104,7 +104,7 @@ void SimplePurePursuit::onTimer()
 
     geometry_msgs::msg::PointStamped lookahead_point_msg;
     lookahead_point_msg.header.stamp = get_clock()->now();
-    lookahead_point_msg.header.frame_id = "base_link";  // Changed from "map" to "base_link"
+    lookahead_point_msg.header.frame_id = "base_link";
     lookahead_point_msg.point.x = lookahead_point_x;
     lookahead_point_msg.point.y = lookahead_point_y;
     lookahead_point_msg.point.z = closet_traj_point.pose.position.z;
