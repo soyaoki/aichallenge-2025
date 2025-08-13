@@ -59,25 +59,24 @@ void SimplePurePursuit::onTimer()
     return;
   }
 
-  size_t closet_traj_point_idx =
-    findNearestIndex(trajectory_->points, odometry_->pose.pose.position);
-
+  // For base_link coordinate system trajectory, ego position is always (0,0,0)
+  // Start from trajectory point 1 (trajectory[0] is current position at (0,0,0))
+  size_t closest_traj_point_idx = 1;  // Always use trajectory[1] as reference
+  
   // publish zero command
   AckermannControlCommand cmd = zeroAckermannControlCommand(get_clock()->now());
 
-  if (
-    (closet_traj_point_idx == trajectory_->points.size() - 1) ||
-    (trajectory_->points.size() <= 2)) {
+  if (trajectory_->points.size() <= 2) {
     cmd.longitudinal.speed = 0.0;
     cmd.longitudinal.acceleration = -10.0;
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "reached to the goal");
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "trajectory too short");
   } else {
-    // get closest trajectory point from current position
-    TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
+    // get trajectory point (use point 1 as target since point 0 is current position)
+    TrajectoryPoint closest_traj_point = trajectory_->points.at(std::min(closest_traj_point_idx, trajectory_->points.size() - 1));
 
     // calc longitudinal speed and acceleration
     double target_longitudinal_vel =
-      use_external_target_vel_ ? external_target_vel_ : closet_traj_point.longitudinal_velocity_mps;
+      use_external_target_vel_ ? external_target_vel_ : closest_traj_point.longitudinal_velocity_mps;
     double current_longitudinal_vel = odometry_->twist.twist.linear.x;
 
     cmd.longitudinal.speed = target_longitudinal_vel;
@@ -87,14 +86,12 @@ void SimplePurePursuit::onTimer()
     // calc lateral control
     //// calc lookahead distance
     double lookahead_distance = lookahead_gain_ * target_longitudinal_vel + lookahead_min_distance_;
-    //// calc center coordinate of rear wheel
-    double rear_x = odometry_->pose.pose.position.x -
-                    wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
-    double rear_y = odometry_->pose.pose.position.y -
-                    wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
-    //// search lookahead point
+    //// In base_link coordinate system, rear wheel is at (-wheel_base_/2, 0)
+    double rear_x = -wheel_base_ / 2.0;
+    double rear_y = 0.0;
+    //// search lookahead point from trajectory point 1 onwards (skip point 0 which is current position)
     auto lookahead_point_itr = std::find_if(
-      trajectory_->points.begin() + closet_traj_point_idx, trajectory_->points.end(),
+      trajectory_->points.begin() + 1, trajectory_->points.end(),
       [&](const TrajectoryPoint & point) {
         return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >=
                lookahead_distance;
@@ -107,15 +104,15 @@ void SimplePurePursuit::onTimer()
 
     geometry_msgs::msg::PointStamped lookahead_point_msg;
     lookahead_point_msg.header.stamp = get_clock()->now();
-    lookahead_point_msg.header.frame_id = "map";
+    lookahead_point_msg.header.frame_id = "base_link";
     lookahead_point_msg.point.x = lookahead_point_x;
     lookahead_point_msg.point.y = lookahead_point_y;
-    lookahead_point_msg.point.z = closet_traj_point.pose.position.z;
+    lookahead_point_msg.point.z = closest_traj_point.pose.position.z;
     pub_lookahead_point_->publish(lookahead_point_msg);
 
     // calc steering angle for lateral control
-    double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) -
-                   tf2::getYaw(odometry_->pose.pose.orientation);
+    // In base_link coordinate system, vehicle yaw is always 0
+    double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x);
     cmd.lateral.steering_tire_angle =
       steering_tire_angle_gain_ * std::atan2(2.0 * wheel_base_ * std::sin(alpha), lookahead_distance);
   }
