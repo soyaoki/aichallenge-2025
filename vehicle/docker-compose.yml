@@ -20,6 +20,7 @@ x-autoware-base: &autoware-base
     - ${XAUTHORITY}:${XAUTHORITY}:rw
   devices:
     - /dev/dri
+    - /dev/video0
   working_dir: /aichallenge
 
 services:
