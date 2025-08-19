@@ -9,6 +9,7 @@ x-autoware-base: &autoware-base
     - ROS_DISTRO=humble
     - XAUTHORITY=${XAUTHORITY}
     - QT_X11_NO_MITSHM=1
+    - TZ=Asia/Tokyo
   volumes:
     - ../output:/output
     - ../aichallenge:/aichallenge
@@ -78,7 +79,7 @@ services:
     init: true
     container_name: "aic-2025-rosbag"
     stop_grace_period: 5.0s
-    command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /autoware/install/setup.bash && cd /aichallenge && exec bash record_rosbag.bash"]
+    command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /autoware/install/setup.bash && cd /vehicle && exec bash record_rosbag.bash"]
 
   # rosbag record 
   rviz2:
