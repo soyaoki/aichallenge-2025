@@ -37,7 +37,6 @@ TOPICS=(
     "/rosout"
     "/sensing/gnss/gnss_fixed"
     "/sensing/gnss/nav_sat_fix"
-    "/sensing/gnss/navpvt"
     "/sensing/gnss/pose"
     "/sensing/gnss/pose_with_covariance"
     "/sensing/imu/imu_data"
