@@ -1,4 +1,11 @@
 # aichallenge-2025
+Localにて実行
+vcs import --shallow --input depends.repos  aichallenge/workspace/src/
+
+In docker
+rosdep update
+sudo apt update
+rosdep install -y -r -i --from-paths /aichallenge/workspace/src --ignore-src --rosdistro $ROS_DISTRO; \
 
 本リポジトリでは、2025年度に実施される自動運転AIチャレンジでご利用いただく開発環境を提供します。参加者の皆様には、Autoware Universe をベースとした自動運転ソフトウェアを開発し、予選大会では End to End シミュレーション空間を走行するレーシングカートにインテグレートしていただきます。開発した自動運転ソフトウェアで、安全に走行しながらタイムアタックに勝利することが目標です。また、決勝大会では本物のレーシングカートへのインテグレーションを行っていただきます。
 

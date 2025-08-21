@@ -1,0 +1,10 @@
+repositories:
+  ublox:
+    type: git
+    url: https://github.com/KumarRobotics/ublox.git
+    version: ros2
+
+#  ublox:
+#    type: git
+#    url: https://github.com/tier4/ublox.git
+#    version: rolling
