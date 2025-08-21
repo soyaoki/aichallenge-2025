@@ -49,7 +49,7 @@
         <remap from="/sensing/gnss/fix_velocity" to="/sensing/gnss/velocity_status"/>
         <remap from="/sensing/gnss/monhw" to="/sensing/gnss/monhw"/>
         <remap from="/sensing/gnss/rtcm" to="/sensing/gnss/rtcm"/>
-        <param from="$(find-pkg-share aichallenge_submit_launch)/config/ublox_z9r.param.yaml"/>
+        <param from="$(find-pkg-share aichallenge_submit_launch)/config/ublox_f9r.param.yaml"/>
       </node>
     <!-- </group> -->
   </group

@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    device: /dev/ttyACM0
+    frame_id: gnss_link
+    config_on_startup: False
+    rate: 20.0
+    uart1:
+      baudrate: 921600
+    publish:
+      all: false
+      nmea: false
+      aid:
+        all: false
+      rxm:
+        all: false
+      nav:
+        clock: false
+        pvt: true
+        posecef: false
+        sat: false
+      mon:
+        all: true
