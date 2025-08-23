@@ -18,7 +18,6 @@ zenoh:
 # racing_kart_interfaceのbashを起動
 driver-bash:
 	docker compose run driver bash
-	docker compose logs -f driver zenoh
 
 # aicコンテナにてros2 bag record -a
 rosbag:
