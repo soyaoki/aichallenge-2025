@@ -88,17 +88,9 @@ rviz2:
 all:download-only
 	docker compose up -d aic-build driver zenoh autoware rosbag
 	docker compose logs -f aic-build driver zenoh autoware rosbag
-#それぞれのコンテナをstopする
-stop-autoware:
-	docker compose stop autoware
-stop-zenoh:
-	docker compose stop zenoh
-stop-driver:
-	docker compose stop driver
+
 stop-rosbag:
 	docker compose stop rosbag
-stop-rviz2:
-	docker compose stop rviz2
-# Stop all services
-stop-all:
+	sleep 5
 	docker compose down
+
