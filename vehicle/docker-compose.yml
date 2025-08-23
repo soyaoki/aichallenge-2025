@@ -23,6 +23,27 @@ x-autoware-base: &autoware-base
     - /dev/video0
   working_dir: /aichallenge
 
+x-racing_kart_interface-base: &racing_kart_interface-base
+  image: "ghcr.io/tier4/racing_kart_interface:latest-experiment"
+  privileged: true
+  pull_policy: never
+  network_mode: host
+  environment:
+    - DISPLAY=${DISPLAY}
+    - USER=${USER}
+    - TZ=Asia/Tokyo
+    - ROS_DISTRO=humble
+  volumes:
+    - /dev/vcu:/dev/vcu
+    - /dev/gnss:/dev/gnss
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    - /dev/dri:/dev/dri
+  devices:
+    - /dev/dri
+  group_add:
+    - dialout
+  working_dir: /workspace
+
 services:
   # Zenoh service
   zenoh:
@@ -41,33 +62,19 @@ services:
       - ./:/vehicle
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/dri:/dev/dri
+      - ../../racing_kart_interface:/workspace
     devices:
       - /dev/dri
     working_dir: /vehicle
     command: zenoh-bridge-ros2dds client -e tcp/57.180.63.135:7447 -c /vehicle/zenoh.json5
 
   # Driver service
+  # Driver build service
   driver:
-    tty: true
-    stdin_open: true
-    image: "ghcr.io/tier4/racing_kart_interface:latest-experiment"
-    container_name: "racing_kart_interface"
+    <<: *racing_kart_interface-base
+    container_name: "racing_kart_interface-run"
     stop_grace_period: 0.1s
-    privileged: true
-    network_mode: host
-    environment:
-      - DISPLAY=${DISPLAY}
-      - USER=${USER}
-      - ROS_DISTRO=humble
-      - TZ=Asia/Tokyo
-    volumes:
-      - /dev/vcu:/dev/vcu
-      - /dev/gnss:/dev/gnss
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /dev/dri:/dev/dri
-      - ../../racing_kart_interface:/workspace
-    group_add:
-      - dialout
+    command: ['vehicle']
 
   # Autoware service
   autoware:
@@ -97,27 +104,8 @@ services:
     container_name: "aic-2025-build"
     stop_grace_period: 0.1s
     command: ['bash', '-c', 'source /opt/ros/humble/setup.bash && source /autoware/install/setup.bash && cd /aichallenge && timeout 1800 bash build_autoware.bash|| echo "Build failed or timed out"']
-
-  # Driver build service
   driver-build:
-    tty: true
-    stdin_open: true
-    image: "ghcr.io/tier4/racing_kart_interface:latest-experiment"
+    <<: *racing_kart_interface-base
     container_name: "racing_kart_interface-build"
     stop_grace_period: 0.1s
-    privileged: true
-    network_mode: host
-    environment:
-      - DISPLAY=${DISPLAY}
-      - USER=${USER}
-      - ROS_DISTRO=humble
-      - TZ=Asia/Tokyo
-    volumes:
-      - /dev/vcu:/dev/vcu
-      - /dev/gnss:/dev/gnss
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /dev/dri:/dev/dri
-      - ../../racing_kart_interface:/workspace
-    group_add:
-      - dialout
     command: ['build']

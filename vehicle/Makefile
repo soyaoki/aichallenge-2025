@@ -11,7 +11,6 @@ driver:
 	docker compose logs -f driver
 
 # zenohの起動・ログ表示
-    tty: true
 zenoh:
 	docker compose up -d zenoh
 	docker compose logs -f zenoh
@@ -19,10 +18,6 @@ zenoh:
 # racing_kart_interfaceのbashを起動
 driver-bash:
 	docker compose run driver bash
-
-# racing kartとzenohの起動・ログ表示
-driver-zenoh:
-	docker compose up -d driver zenoh
 	docker compose logs -f driver zenoh
 
 # aicコンテナにてros2 bag record -a
@@ -33,7 +28,7 @@ rosbag:
 # Autowareとracing kartとzenohの起動
 run-full-system:
 	docker compose up -d autoware driver zenoh
-	docker compose logs -f autoware driver zenoh
+	docker compose logs -f autoware driver zenoh 2>&1 | tee full_log.log | stdbuf -oL grep -E "(ERROR|WARN)"
 
 # Download submission data by asking for credentials interactively
 # Usage:
