@@ -1,9 +1,8 @@
 /**:
   ros__parameters:
-    device: /dev/ttyACM0
+    device: /dev/ttyACM2
     frame_id: gnss_link
     config_on_startup: true
-    rate: 20.0
     nmea:
       high_prec: true
     uart1:
