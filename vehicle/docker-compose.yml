@@ -62,7 +62,6 @@ services:
       - ./:/vehicle
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/dri:/dev/dri
-      - ../../racing_kart_interface:/workspace
     devices:
       - /dev/dri
     working_dir: /vehicle
