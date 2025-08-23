@@ -93,4 +93,3 @@ stop-rosbag:
 	docker compose stop rosbag
 	sleep 5
 	docker compose down
-
