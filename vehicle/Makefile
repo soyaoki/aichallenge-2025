@@ -85,7 +85,7 @@ rviz2:
 	docker compose logs -f rviz2
 
 # ダウンロードからビルド・実行まで全て行う
-all:download-only
+all: download
 	docker compose up -d aic-build driver zenoh autoware rosbag
 	docker compose logs -f aic-build driver zenoh autoware rosbag
 
