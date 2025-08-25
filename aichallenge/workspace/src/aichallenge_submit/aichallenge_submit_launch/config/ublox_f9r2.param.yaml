@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    device: /dev/ttyACM2
+    device: /dev/ttyACM1
     frame_id: gnss_link
     config_on_startup: true
     nmea:
