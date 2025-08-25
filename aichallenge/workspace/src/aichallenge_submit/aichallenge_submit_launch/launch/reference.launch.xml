@@ -43,12 +43,6 @@
         <arg name="output_topic_gnss_fixed" value="gnss_fixed"/>
         <arg name="output_topic_gnss_pose_cov" value="pose_with_covariance"/>
       </include>
-      <include file="$(find-pkg-share racing_kart_gnss_poser)/launch/gnss_poser2.launch.xml">
-        <arg name="input_topic_fix" value="nav_sat_fix2"/>
-        <arg name="output_topic_gnss_pose" value="pose2"/>
-        <arg name="output_topic_gnss_fixed" value="gnss_fixed2"/>
-        <arg name="output_topic_gnss_pose_cov" value="pose_with_covariance2"/>
-      </include>
 
       <node pkg="ublox_gps" exec="ublox_gps_node" output="screen">
         <remap from="/sensing/gnss/fix" to="/sensing/gnss/nav_sat_fix"/>
@@ -57,16 +51,6 @@
         <remap from="/sensing/gnss/rtcm" to="/sensing/gnss/rtcm"/>
         <remap from="/sensing/gnss/navpvt" to="/sensing/gnss/navpvt"/> 
         <param from="$(find-pkg-share aichallenge_submit_launch)/config/ublox_f9r.param.yaml"/>
-      </node>
-      <node pkg="ublox_gps" exec="ublox_gps_node" output="screen">
-        <remap from="/sensing/gnss/fix" to="/sensing/gnss/nav_sat_fix2"/>
-        <remap from="/sensing/gnss/fix_velocity" to="/sensing/gnss/velocity_status2"/>
-        <remap from="/sensing/gnss/monhw" to="/sensing/gnss/monhw2"/>
-        <remap from="/sensing/gnss/rtcm" to="/sensing/gnss/rtcm2"/>
-        <remap from="/sensing/gnss/navpvt" to="/sensing/gnss/navpvt2"/> 
-        <remap from="/sensing/gnss/pose" to="/sensing/gnss/pose2"/>
-        <remap from="/sensing/gnss/pose_with_covariance" to="/sensing/gnss/pose_with_covariance2"/> 
-        <param from="$(find-pkg-share aichallenge_submit_launch)/config/ublox_f9r2.param.yaml"/>
       </node>
     <!-- </group> -->
   </group
