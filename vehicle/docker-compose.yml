@@ -24,7 +24,7 @@ x-autoware-base: &autoware-base
   working_dir: /aichallenge
 
 x-racing_kart_interface-base: &racing_kart_interface-base
-  image: "ghcr.io/tier4/racing_kart_interface:latest-experiment"
+  image: "racing_kart_interface:latest"
   privileged: true
   pull_policy: never
   network_mode: host
@@ -38,6 +38,7 @@ x-racing_kart_interface-base: &racing_kart_interface-base
     - /dev/gnss:/dev/gnss
     - /tmp/.X11-unix:/tmp/.X11-unix:rw
     - /dev/dri:/dev/dri
+    - ../../racing_kart_interface:/workspace
   devices:
     - /dev/dri
   group_add:
