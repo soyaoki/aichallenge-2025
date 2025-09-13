@@ -6,4 +6,4 @@ if [[ ${1} == "clean" ]]; then
 fi
 
 cd ./workspace || exit
-colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+MAKEFLAGS="-j8" colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --parallel-workers 8
