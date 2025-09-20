@@ -7,3 +7,5 @@ mkdir -p ~/autoware_data/yabloc_pose_initializer/
 wget -P ~/autoware_data/yabloc_pose_initializer/ \
        https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/136_road-segmentation-adas-0001/resources.tar.gz
 tar xzf ~/autoware_data/yabloc_pose_initializer/resources.tar.gz -C ~/autoware_data/yabloc_pose_initializer/
+
+sudo apt install python3-tomli -y

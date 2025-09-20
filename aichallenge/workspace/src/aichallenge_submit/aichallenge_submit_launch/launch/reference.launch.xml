@@ -116,7 +116,7 @@
         exec="static_transform_publisher"
         name="camera_static_tf"
         output="screen"
-        args="0 0 0 0 0 0 base_link camera_link">
+        args="1.0 0.0 0.5 -1.5708 0 -1.5708 base_link camera_link">
     </node>
 
     <group>
