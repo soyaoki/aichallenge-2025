@@ -81,7 +81,7 @@ geometry_msgs::msg::TwistWithCovarianceStamped concatGyroAndOdometer(
     twist_with_cov.header.stamp = latest_vehicle_twist_stamp;
   }
   twist_with_cov.header.frame_id = gyro_queue.front().header.frame_id;
-  twist_with_cov.twist.twist.linear.x = vx_mean;
+  twist_with_cov.twist.twist.linear.x = vx_mean - 0.5; // bias correction
   twist_with_cov.twist.twist.angular = gyro_mean;
 
   // From a statistical point of view, here we reduce the covariances according to the number of
