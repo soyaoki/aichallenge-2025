@@ -8,24 +8,18 @@ The VLM Planner generates trajectory using VLM inference based on camera images 
 
 ## Setup
 
+### Create and edit .env
+
+```sh
+cp .env.sample .env
+```
+
+Set `GEMINI_API_KEY` and `GEMINI_MODEL_NAME` in `.env`.
+
 ### Environment Setup
 
 ```sh
-uv venv -p python3.10
-```
-
-```sh
-source .venv/bin/activate
-```
-
-```sh
-uv pip install .
-```
-
-### Set Gemini API Key
-
-```sh
-export GEMINI_API_KEY="YOUR_API_KEY"
+source setup_vlm_plannner.bash
 ```
 
 ## Usage
@@ -38,7 +32,13 @@ export GEMINI_API_KEY="YOUR_API_KEY"
 **Run:**
 ```sh
 # Run the VLM planner node with custom output topic
-python vlm_planner_node.py --ros-args -p output_topic:="/planning/ml_planner/auto/trajectory"
+uv python3 vlm_planner_node.py --ros-args -p output_topic:="/planning/ml_planner/auto/trajectory"
+```
+
+or 
+
+```sh
+source run_vlm_plannner.bash
 ```
 
 **Topics:**
