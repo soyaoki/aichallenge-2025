@@ -19,7 +19,7 @@ Set `GEMINI_API_KEY` and `GEMINI_MODEL_NAME` in `.env`.
 ### Environment Setup
 
 ```sh
-source setup_vlm_plannner.bash
+source setup_vlm_planner.bash
 ```
 
 ## Usage
@@ -32,13 +32,13 @@ source setup_vlm_plannner.bash
 **Run:**
 ```sh
 # Run the VLM planner node with custom output topic
-uv python3 vlm_planner_node.py --ros-args -p output_topic:="/planning/ml_planner/auto/trajectory"
+uv run python3 vlm_planner_node.py --ros-args -p output_topic:="/planning/ml_planner/auto/trajectory"
 ```
 
 or 
 
 ```sh
-source run_vlm_plannner.bash
+source run_vlm_planner.bash
 ```
 
 **Topics:**
