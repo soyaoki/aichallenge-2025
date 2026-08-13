@@ -17,6 +17,8 @@ x-autoware-base: &autoware-base
     - SIM_MODE=${SIM_MODE:-}
     - CMD=${CMD:-}
     - CONTROL_METHOD=${CONTROL_METHOD:-mpc}
+    # Portable default. docker-compose.gpu.yml changes this default to cuda.
+    - VISION_PILOT_PROVIDER=${VISION_PILOT_PROVIDER:-cpu}
     - COLCON_TRACE=${COLCON_TRACE:-}
     - ROS_HOME=${ROS_HOME:-}
     - ROS_LOG_DIR=${ROS_LOG_DIR:-}

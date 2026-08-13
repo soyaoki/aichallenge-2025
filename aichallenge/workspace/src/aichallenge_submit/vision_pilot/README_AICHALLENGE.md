@@ -7,12 +7,35 @@ This package vendors the hybrid E2E perception pipeline from
 The following challenge-specific adaptations are applied:
 
 - ROS image input is `/sensing/camera/image_raw`.
-- INT8 AutoDrive, AutoSteer and AutoSpeed models are used with CUDA ONNX Runtime.
+- INT8 AutoDrive, AutoSteer and AutoSpeed models are used with ONNX Runtime
+  (CPU by default, or CUDA through the GPU Compose overlay).
 - The upstream CppAD/IPOPT lateral MPC is replaced by a dependency-free
   curvature feed-forward plus CTE/heading feedback controller.
 - `vision_pilot_adapter` converts the challenge `VelocityReport` and
   `AckermannControlCommand` APIs to/from Vision Pilot's scalar topics.
 - Visualization and WebRTC are disabled for headless evaluation.
+
+## Inference provider
+
+Vision Pilot uses the ONNX Runtime CPU provider by default, so the normal
+Compose configuration works without an NVIDIA GPU. The GPU overlay selects
+CUDA automatically:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d autoware
+```
+
+Override either default explicitly when needed:
+
+```bash
+VISION_PILOT_PROVIDER=cpu docker compose up -d autoware
+VISION_PILOT_PROVIDER=cuda docker compose \
+  -f docker-compose.yml -f docker-compose.gpu.yml up -d autoware
+```
+
+The selected provider is printed at startup as `[OnnxEngine] provider=...`.
+This setting changes Vision Pilot inference only; it does not select the AWSIM
+camera readback mode or Unity renderer.
 
 ## Model weights
 

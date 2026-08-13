@@ -89,6 +89,12 @@ bool parse_bool(const std::string& s, const std::string& k)
 
 bool file_ok(const std::string& p) { return !p.empty() && std::filesystem::is_regular_file(p); }
 
+std::string env_or_default(const char* name, const std::string& fallback)
+{
+    const char* value = std::getenv(name);
+    return (value && value[0] != '\0') ? value : fallback;
+}
+
 }  // namespace
 
 SourceMode parse_source_mode(const std::string& v)
@@ -115,7 +121,15 @@ Config load_vision_pilot_config()
     auto kv = parse_conf(find_config("vision_pilot.conf"));
     Config cfg;
 
-    cfg.engine.provider     = optional(kv, "engine.provider",     "cpu");
+    cfg.engine.provider     = env_or_default(
+        "VISION_PILOT_PROVIDER", optional(kv, "engine.provider", "cpu"));
+    if (cfg.engine.provider != "cpu" &&
+        cfg.engine.provider != "cuda" &&
+        cfg.engine.provider != "tensorrt") {
+        throw std::runtime_error(
+            "Invalid VISION_PILOT_PROVIDER/engine.provider: '" + cfg.engine.provider +
+            "'. Use cpu|cuda|tensorrt");
+    }
     cfg.engine.precision    = optional(kv, "model.precision",    "fp32");
     cfg.engine.device_id    = parse_int(optional(kv, "engine.device_id", "0"), "engine.device_id");
     cfg.engine.cache_dir    = expand_home(optional(kv, "engine.cache_dir", "/tmp/visionpilot_trt_cache"));

@@ -4,6 +4,7 @@ x-gpu: &gpu
   environment:
     - NVIDIA_VISIBLE_DEVICES=all
     - NVIDIA_DRIVER_CAPABILITIES=all
+    - VISION_PILOT_PROVIDER=${VISION_PILOT_PROVIDER:-cuda}
   deploy:
     resources:
       reservations:
