@@ -4,6 +4,11 @@ This package vendors the hybrid E2E perception pipeline from
 `soyaoki/autoware_vision_pilot` at commit
 `e93eceaaa70ee4e7b55fd4ecc04c023c163c8098` (Apache-2.0).
 
+The upstream Apache-2.0 license and README are preserved in `LICENSE`,
+`UPSTREAM_LICENSE`, and `UPSTREAM_README.md`. Attribution, the model-weight
+license basis, and a summary of modifications are recorded in
+`THIRD_PARTY_NOTICES.md`.
+
 The following challenge-specific adaptations are applied:
 
 - ROS image input is `/sensing/camera/image_raw`.
