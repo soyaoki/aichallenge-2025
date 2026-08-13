@@ -13,3 +13,5 @@ ros-humble-rtcm-msgs
 zstd
 python3-tomli
 qt5ct
+libeigen3-dev
+curl

@@ -28,7 +28,8 @@ source /autoware/install/setup.bash
 cd ./workspace
 
 # NOTE: gyro_odometer exists in the Autoware underlay, so allow overriding in this overlay workspace.
-colcon build --symlink-install --allow-overriding gyro_odometer --cmake-args -DCMAKE_BUILD_TYPE=Release
+colcon build --symlink-install --allow-overriding gyro_odometer \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DONNXRUNTIME_ROOT=/opt/onnxruntime
 
 echo "[build_autoware] Build successful."
 

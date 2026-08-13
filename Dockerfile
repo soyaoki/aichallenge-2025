@@ -21,6 +21,16 @@ ENV QT_QPA_PLATFORMTHEME=qt5ct
 COPY requirements.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
+# C++ ONNX Runtime used by the vendored Vision Pilot E2E models. Keep this
+# version pinned so both development and evaluation images are reproducible.
+ARG ONNXRUNTIME_VERSION=1.18.0
+RUN curl -L -o /tmp/onnxruntime.tgz \
+      "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-gpu-cuda12-${ONNXRUNTIME_VERSION}.tgz" \
+    && mkdir -p /opt/onnxruntime \
+    && tar -xzf /tmp/onnxruntime.tgz --strip-components=1 -C /opt/onnxruntime \
+    && rm /tmp/onnxruntime.tgz
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cufft/lib:/usr/local/lib/python3.10/dist-packages/nvidia/curand/lib
+
 # Provide a robust `colcon` wrapper which avoids setuptools "entry script"
 # dependency resolution issues (e.g. pkg_resources evaluating __requires__).
 RUN cat >/usr/local/bin/colcon <<'EOF'
@@ -76,6 +86,6 @@ RUN bash -c ' \
     cd /aichallenge/workspace; \
     rosdep update; \
     rosdep install -y -r -i --from-paths src --ignore-src --rosdistro $ROS_DISTRO; \
-    python3 -c "from colcon_core.command import main; import sys; sys.exit(main())" build --symlink-install --allow-overriding gyro_odometer --cmake-args -DCMAKE_BUILD_TYPE=Release'
+    python3 -c "from colcon_core.command import main; import sys; sys.exit(main())" build --symlink-install --allow-overriding gyro_odometer --cmake-args -DCMAKE_BUILD_TYPE=Release -DONNXRUNTIME_ROOT=/opt/onnxruntime'
 
 CMD ["bash", "/aichallenge/run_evaluation.bash"]
