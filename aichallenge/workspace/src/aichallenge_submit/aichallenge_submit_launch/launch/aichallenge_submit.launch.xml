@@ -13,6 +13,10 @@
   <log message=" - launch_vehicle_interface: $(var launch_vehicle_interface)"/>
   <log message=" - control_method: $(var control_method)"/>
 
+  <!-- Auto-select the Vision Pilot rviz view (debug image display) when applicable. -->
+  <let name="rviz_config" value="$(find-pkg-share aichallenge_submit_launch)/config/autoware-vision_pilot.rviz"
+       if="$(eval &quot;'$(var simulation)' == 'true' and '$(var control_method)' == 'vision_pilot'&quot;)"/>
+
   <include file="$(find-pkg-share aichallenge_submit_launch)/launch/reference.launch.xml" >
     <arg name="vehicle_model" value="racing_kart"/>
     <arg name="sensor_model" value="$(var sensor_model)"/>
