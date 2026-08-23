@@ -81,8 +81,12 @@
       # the requested speed would stay at zero and pin the kart at the start line.
       # Below launch_speed we pull away ourselves; set launch_speed to 0 to let the
       # model decide from a stop.
+      # Disarms as soon as the kart reaches launch_speed, so the model owns the
+      # throttle for the rest of the run; re-arms only after launch_rearm_sec of
+      # being genuinely stopped.
       launch_speed: 3.0
       launch_acceleration: 1.5
+      launch_rearm_sec: 2.0
       # Actuator delays the model plans for [s].
       lat_delay: 0.2
       long_delay: 0.2

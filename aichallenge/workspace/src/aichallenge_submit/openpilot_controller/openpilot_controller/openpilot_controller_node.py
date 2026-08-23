@@ -113,6 +113,7 @@ class OpenPilotControllerNode(Node):
         # forever, so pull away under our own power until the model has motion to see.
         self.declare_parameter('control.launch_speed', 2.0)
         self.declare_parameter('control.launch_acceleration', 1.0)
+        self.declare_parameter('control.launch_rearm_sec', 2.0)
 
         self.declare_parameter('vehicle.wheel_base', 1.087)
         self.declare_parameter('vehicle.max_steering_tire_angle', 0.442)
@@ -206,7 +207,11 @@ class OpenPilotControllerNode(Node):
         self.timeout_decel = float(self.get_parameter('control.timeout_deceleration').value)
         self.launch_speed = float(self.get_parameter('control.launch_speed').value)
         self.launch_acceleration = float(self.get_parameter('control.launch_acceleration').value)
-        self._launched = False
+        self.launch_rearm_sec = float(self.get_parameter('control.launch_rearm_sec').value)
+        # Armed at a standstill, disarmed as soon as the kart is rolling, so the
+        # model owns the longitudinal command for the rest of the run.
+        self._launch_armed = True
+        self._stalled_since = None
         self.debug = bool(self.get_parameter('debug').value)
         self.log_interval = float(self.get_parameter('log_interval_sec').value)
 
@@ -491,22 +496,15 @@ class OpenPilotControllerNode(Node):
         steering = self.steering_gain * math.atan(self.wheel_base * action.desired_curvature)
         acceleration = action.desired_acceleration
         target_speed = action.target_speed
-        launching = self.launch_speed > 0.0 and self.v_ego < self.launch_speed
-        if launching:
+
+        if self._launch_active():
             # AWSIM tracks longitudinal.speed, so a zero speed request pins the kart
             # in place no matter what acceleration says.
             acceleration = max(acceleration, self.launch_acceleration)
             target_speed = max(target_speed, self.launch_speed)
-            if not self._launched:
-                self._launched = True
-                self.get_logger().info(
-                    f'below {self.launch_speed:.1f} m/s: pulling away at {self.launch_speed:.1f} m/s '
-                    'until the model has motion to work with')
         elif action.should_stop:
             acceleration = min(acceleration, self.core.control.max_deceleration)
             target_speed = 0.0
-        else:
-            self._launched = False
 
         if not (math.isfinite(steering) and math.isfinite(acceleration)):
             self.get_logger().error('model produced a non-finite command; braking',
@@ -521,6 +519,38 @@ class OpenPilotControllerNode(Node):
         command.lateral.steering_tire_angle = float(
             max(-self.max_steer, min(self.max_steer, steering)))
         self.pub_control.publish(command)
+
+    def _launch_active(self) -> bool:
+        """Departure aid: get rolling, then hand the longitudinal command back.
+
+        The model reports shouldStop at a standstill, so without this the kart
+        never leaves the line. Left permanently on it would instead drive the
+        whole run itself, since the kart rarely exceeds the threshold.
+        """
+        if self.launch_speed <= 0.0:
+            return False
+        now = self.get_clock().now()
+        if self.v_ego >= self.launch_speed:
+            if self._launch_armed:
+                self.get_logger().info(
+                    f'reached {self.launch_speed:.1f} m/s; the model has the throttle now')
+            self._launch_armed = False
+            self._stalled_since = None
+            return False
+        if not self._launch_armed:
+            # Re-arm only if the kart is genuinely stuck again, not merely slow.
+            if self.v_ego > 0.3:
+                self._stalled_since = None
+            else:
+                if self._stalled_since is None:
+                    self._stalled_since = now
+                elif (now - self._stalled_since).nanoseconds / 1e9 > self.launch_rearm_sec:
+                    self.get_logger().info('stalled; pulling away again',
+                                           throttle_duration_sec=5.0)
+                    self._launch_armed = True
+                    self._stalled_since = None
+            return self._launch_armed
+        return True
 
     def _publish_safe_stop(self, command: AckermannControlCommand):
         command.longitudinal.stamp = command.stamp
