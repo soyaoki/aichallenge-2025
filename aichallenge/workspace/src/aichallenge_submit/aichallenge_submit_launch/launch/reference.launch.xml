@@ -163,9 +163,15 @@
     </include>
   </group>
 
+  <!-- openpilot starts in observation mode: the predicted path is published as
+       markers but no control command is sent until openpilot_control_enabled is true. -->
+  <arg name="openpilot_control_enabled" default="false"/>
+  <arg name="openpilot_output_mode" default="direct_action" description="direct_action or trajectory"/>
   <group if="$(eval &quot;'$(var control_method)' == 'openpilot'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/openpilot.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="control_enabled" value="$(var openpilot_control_enabled)"/>
+      <arg name="output_mode" value="$(var openpilot_output_mode)"/>
     </include>
   </group>
 

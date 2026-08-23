@@ -24,7 +24,27 @@
       calib_pitch: 0.0
       calib_yaw: 0.0
 
+    output:
+      # direct_action: publish AckermannControlCommand from the model's action.
+      # trajectory   : publish the predicted plan as an Autoware Trajectory and let
+      #                one of the challenge controllers follow it.
+      mode: "direct_action"
+      frame_id: "base_link"
+      # Predicted path / lane lines / road edges for RViz. Look at these first.
+      publish_markers: true
+
+    # comma's device frame is x->forward, y->right, z->down; base_link is
+    # x->forward, y->left, z->up. Confirm against a real drive before trusting it.
+    frame:
+      swap_xy: false
+      invert_x: false
+      invert_y: true
+      invert_z: true
+
     control:
+      # Phase 1 is observation only: watch the predicted path in RViz before
+      # letting the model drive. Set to true to publish control commands.
+      enabled: false
       publish_rate_hz: 20.0
       command_timeout_sec: 0.5
       timeout_deceleration: -2.0

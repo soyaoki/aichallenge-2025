@@ -97,6 +97,12 @@ aichallenge_submit.launch.xml
 
 各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されており、いずれも `/control/command/control_cmd`（`autoware_auto_control_msgs/AckermannControlCommand`）を publish します。
 
+ただし `openpilot` のみ**既定では `control_cmd` を publish しません**。予測経路を
+`/openpilot/debug/markers` に出すだけの観測モードで起動し、`openpilot_control_enabled:=true`
+を渡して初めて制御を行います。`openpilot_output_mode:=trajectory` にすると
+`control_cmd` の代わりに `/openpilot/trajectory`（`autoware_auto_planning_msgs/Trajectory`、
+`base_link` 系）を publish し、追従は別のコントローラに委ねます。
+
 上記の値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。
 
 ---
@@ -140,7 +146,14 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 |---|---|---|
 | `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py`、`openpilot_controller_node.py` |
 
-AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net / openpilot）がこのトピックに収束します。
+AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net / openpilot）がこのトピックに収束します（`openpilot` は `control_enabled=true` かつ `output_mode=direct_action` のとき）。
+
+`openpilot` が追加で publish するトピック（評価には不要、デバッグ・段階的立ち上げ用）:
+
+| トピック | 型 | 用途 |
+|---|---|---|
+| `/openpilot/debug/markers` | `visualization_msgs/MarkerArray` | 予測経路・車線・路端（`base_link` 系）の RViz 表示 |
+| `/openpilot/trajectory` | `autoware_auto_planning_msgs/Trajectory` | `output_mode=trajectory` のときのみ。既存コントローラに追従させる用 |
 
 実車経路（`simulation=false`）のみ使用する追加出力:
 

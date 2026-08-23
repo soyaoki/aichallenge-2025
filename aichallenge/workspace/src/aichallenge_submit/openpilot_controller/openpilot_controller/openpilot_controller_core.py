@@ -57,14 +57,34 @@ class ControlConfig:
     is_rhd: bool = True
 
 
+def _zeros(*shape):
+    return lambda: np.zeros(shape, dtype=np.float32)
+
+
 @dataclass
 class Action:
+    """One prediction: the command to send, plus the plan it was derived from."""
+
     desired_curvature: float = 0.0
     desired_acceleration: float = 0.0
     target_speed: float = 0.0
     should_stop: bool = False
     curvature_limited: bool = False
-    extra: dict = field(default_factory=dict)
+
+    # Plan sampled at ModelConstants.T_IDXS, in the comma device frame
+    # (x forward, y right, z down).
+    path: np.ndarray = field(default_factory=_zeros(ModelConstants.IDX_N, 3))
+    path_speed: np.ndarray = field(default_factory=_zeros(ModelConstants.IDX_N))
+    path_accel: np.ndarray = field(default_factory=_zeros(ModelConstants.IDX_N))
+    path_yaw: np.ndarray = field(default_factory=_zeros(ModelConstants.IDX_N))
+    path_yaw_rate: np.ndarray = field(default_factory=_zeros(ModelConstants.IDX_N))
+
+    # Cross sections of (y, z) at ModelConstants.X_IDXS.
+    lane_lines: np.ndarray = field(
+        default_factory=_zeros(ModelConstants.NUM_LANE_LINES, ModelConstants.IDX_N, 2))
+    lane_lines_prob: np.ndarray = field(default_factory=_zeros(ModelConstants.NUM_LANE_LINES))
+    road_edges: np.ndarray = field(
+        default_factory=_zeros(ModelConstants.NUM_ROAD_EDGES, ModelConstants.IDX_N, 2))
 
 
 class OpenPilotCore:
@@ -171,10 +191,14 @@ class OpenPilotCore:
             target_speed=target_speed,
             should_stop=bool(stop),
             curvature_limited=bool(limited),
-            extra={
-                'lane_lines_prob': outputs['lane_lines_prob'][0],
-                'lead_prob': outputs['lead_prob'][0],
-            },
+            path=plan[:, Plan.POSITION],
+            path_speed=speeds,
+            path_accel=accels,
+            path_yaw=plan[:, Plan.T_FROM_CURRENT_EULER][:, 2],
+            path_yaw_rate=plan[:, Plan.ORIENTATION_RATE][:, 2],
+            lane_lines=outputs['lane_lines'][0],
+            lane_lines_prob=outputs['lane_lines_prob'][0],
+            road_edges=outputs['road_edges'][0],
         )
         self.prev_action = action
         return action

@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """ROS 2 node running comma.ai's driving_supercombo as an end-to-end controller.
 
-Subscribes to the front camera and the vehicle velocity, runs the model, and
-publishes ``AckermannControlCommand``. The command is published on a fixed
-timer with a watchdog so a stalled camera brakes the vehicle instead of
-latching the last steering angle.
+Two output modes:
+
+``direct_action``
+    Publish ``AckermannControlCommand`` from the model's desired curvature and
+    acceleration. Only actually publishes when ``control.enabled`` is true.
+
+``trajectory``
+    Publish the predicted plan as an ``autoware_auto_planning_msgs/Trajectory``
+    in ``base_link`` and let one of the challenge controllers follow it.
+
+Either way the predicted path, lane lines and road edges go out as RViz markers,
+which is what to look at first: the path should bend into a corner before the
+vehicle reaches it. Control commands are published on a fixed timer with a
+watchdog, so a stalled camera brakes rather than latching the last steering angle.
 """
 
 import math
@@ -15,14 +25,23 @@ import numpy as np
 import cv2
 
 import rclpy
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image
+from visualization_msgs.msg import MarkerArray
 from autoware_auto_control_msgs.msg import AckermannControlCommand
+from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import VelocityReport
 
-from openpilot_controller.openpilot_controller_core import ControlConfig, OpenPilotCore
+from openpilot_controller.debug_publisher import build_markers
 from openpilot_controller.drive_helpers import DT_MDL
+from openpilot_controller.frames import FrameConfig
+from openpilot_controller.openpilot_controller_core import ControlConfig, OpenPilotCore
+from openpilot_controller.trajectory_adapter import build_trajectory
+
+OUTPUT_MODES = ('direct_action', 'trajectory')
 
 
 class OpenPilotControllerNode(Node):
@@ -40,6 +59,16 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('camera.calib_pitch', 0.0)
         self.declare_parameter('camera.calib_yaw', 0.0)
 
+        self.declare_parameter('output.mode', 'direct_action')
+        self.declare_parameter('output.frame_id', 'base_link')
+        self.declare_parameter('output.publish_markers', True)
+
+        self.declare_parameter('frame.swap_xy', False)
+        self.declare_parameter('frame.invert_x', False)
+        self.declare_parameter('frame.invert_y', True)
+        self.declare_parameter('frame.invert_z', True)
+
+        self.declare_parameter('control.enabled', False)
         self.declare_parameter('control.publish_rate_hz', 20.0)
         self.declare_parameter('control.command_timeout_sec', 0.5)
         self.declare_parameter('control.lat_delay', 0.2)
@@ -66,6 +95,20 @@ class OpenPilotControllerNode(Node):
         if not model_path or not os.path.isfile(model_path):
             raise RuntimeError(
                 f"model file not found: '{model_path}'. Run `make openpilot-models` to download it.")
+
+        self.output_mode = str(self.get_parameter('output.mode').value)
+        if self.output_mode not in OUTPUT_MODES:
+            raise RuntimeError(
+                f"unknown output.mode '{self.output_mode}', expected one of: {', '.join(OUTPUT_MODES)}")
+        self.output_frame = str(self.get_parameter('output.frame_id').value)
+        self.control_enabled = bool(self.get_parameter('control.enabled').value)
+
+        self.frame_config = FrameConfig(
+            swap_xy=bool(self.get_parameter('frame.swap_xy').value),
+            invert_x=bool(self.get_parameter('frame.invert_x').value),
+            invert_y=bool(self.get_parameter('frame.invert_y').value),
+            invert_z=bool(self.get_parameter('frame.invert_z').value),
+        )
 
         control = ControlConfig(
             lat_delay=float(self.get_parameter('control.lat_delay').value),
@@ -110,8 +153,9 @@ class OpenPilotControllerNode(Node):
         self.log_interval = float(self.get_parameter('log_interval_sec').value)
 
         self.v_ego = 0.0
-        self.last_action = None
-        self.last_action_time = None
+        # (action, stamp) written as one tuple so the control timer can never read
+        # an action paired with the wrong timestamp.
+        self._latest = None
         self.last_image_time = None
         self.inference_times = []
         self.last_log_time = self.get_clock().now()
@@ -121,16 +165,45 @@ class OpenPilotControllerNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
-        self.create_subscription(Image, '/image_raw', self.image_callback, sensor_qos)
+        # Inference runs in its own callback group so it cannot delay the control
+        # timer, which is the watchdog that brakes when predictions stop arriving.
+        self.inference_group = MutuallyExclusiveCallbackGroup()
+        self.control_group = MutuallyExclusiveCallbackGroup()
+        self.create_subscription(Image, '/image_raw', self.image_callback, sensor_qos,
+                                 callback_group=self.inference_group)
         if self.use_camera_info:
-            self.create_subscription(CameraInfo, '/camera_info', self.camera_info_callback, sensor_qos)
+            self.create_subscription(CameraInfo, '/camera_info', self.camera_info_callback,
+                                     sensor_qos, callback_group=self.inference_group)
         self.create_subscription(VelocityReport, '/vehicle/status/velocity_status',
-                                 self.velocity_callback, sensor_qos)
-        self.pub_control = self.create_publisher(
-            AckermannControlCommand, '/control/command/control_cmd', 1)
+                                 self.velocity_callback, sensor_qos,
+                                 callback_group=self.control_group)
 
-        rate = max(float(self.get_parameter('control.publish_rate_hz').value), 1.0)
-        self.create_timer(1.0 / rate, self.publish_control)
+        self.pub_markers = None
+        if bool(self.get_parameter('output.publish_markers').value):
+            self.pub_markers = self.create_publisher(MarkerArray, '/openpilot/debug/markers', 1)
+
+        self.pub_trajectory = None
+        self.pub_control = None
+        if self.output_mode == 'trajectory':
+            self.pub_trajectory = self.create_publisher(Trajectory, '/openpilot/trajectory', 1)
+            self.get_logger().info(
+                'output mode: trajectory -> /openpilot/trajectory in '
+                f"'{self.output_frame}'. Remap it onto the trajectory topic of the controller "
+                'that should follow it.')
+        else:
+            self.pub_control = self.create_publisher(
+                AckermannControlCommand, '/control/command/control_cmd', 1)
+            rate = max(float(self.get_parameter('control.publish_rate_hz').value), 1.0)
+            self.create_timer(1.0 / rate, self.publish_control,
+                              callback_group=self.control_group)
+            if self.control_enabled:
+                self.get_logger().info(
+                    'output mode: direct_action -> /control/command/control_cmd')
+            else:
+                self.get_logger().warn(
+                    'output mode: direct_action, but control.enabled is false: no control command '
+                    'will be published. Watch /openpilot/debug/markers first, then set '
+                    'control.enabled:=true to drive.')
 
         self.get_logger().info('OpenPilotControllerNode is ready.')
 
@@ -178,27 +251,37 @@ class OpenPilotControllerNode(Node):
             return
         self.inference_times.append((time.monotonic() - started) * 1000.0)
 
-        self.last_action = action
-        self.last_action_time = now
+        self._latest = (action, now)
+
+        stamp = now.to_msg()
+        if self.pub_markers is not None:
+            self.pub_markers.publish(
+                build_markers(action, stamp, self.frame_config, frame_id=self.output_frame))
+        if self.pub_trajectory is not None:
+            self.pub_trajectory.publish(
+                build_trajectory(action, stamp, self.frame_config, frame_id=self.output_frame,
+                                 max_speed=self.core.control.max_speed))
+
         self._log_performance_metrics()
 
     # -- control ----------------------------------------------------------
     def publish_control(self):
+        if self.pub_control is None or not self.control_enabled:
+            return
+
         command = AckermannControlCommand()
         command.stamp = self.get_clock().now().to_msg()
 
-        action = self.last_action
-        stale = action is None or self.last_action_time is None or (
-            (self.get_clock().now() - self.last_action_time).nanoseconds / 1e9 > self.command_timeout)
+        latest = self._latest
+        action = latest[0] if latest is not None else None
+        stale = latest is None or (
+            (self.get_clock().now() - latest[1]).nanoseconds / 1e9 > self.command_timeout)
 
         if stale:
             if action is not None:
                 self.get_logger().warn('no fresh model output; braking',
                                        throttle_duration_sec=1.0)
-            command.longitudinal.speed = 0.0
-            command.longitudinal.acceleration = self.timeout_decel
-            command.lateral.steering_tire_angle = 0.0
-            self.pub_control.publish(command)
+            self._publish_safe_stop(command)
             return
 
         steering = math.atan(self.wheel_base * action.desired_curvature)
@@ -209,16 +292,19 @@ class OpenPilotControllerNode(Node):
         if not (math.isfinite(steering) and math.isfinite(acceleration)):
             self.get_logger().error('model produced a non-finite command; braking',
                                     throttle_duration_sec=1.0)
-            command.longitudinal.speed = 0.0
-            command.longitudinal.acceleration = self.timeout_decel
-            command.lateral.steering_tire_angle = 0.0
-            self.pub_control.publish(command)
+            self._publish_safe_stop(command)
             return
 
         command.longitudinal.speed = float(action.target_speed)
         command.longitudinal.acceleration = float(acceleration)
         command.lateral.steering_tire_angle = float(
             max(-self.max_steer, min(self.max_steer, steering)))
+        self.pub_control.publish(command)
+
+    def _publish_safe_stop(self, command: AckermannControlCommand):
+        command.longitudinal.speed = 0.0
+        command.longitudinal.acceleration = self.timeout_decel
+        command.lateral.steering_tire_angle = 0.0
         self.pub_control.publish(command)
 
     # -- helpers ----------------------------------------------------------
@@ -249,14 +335,16 @@ class OpenPilotControllerNode(Node):
         now = self.get_clock().now()
         if (now - self.last_log_time).nanoseconds / 1e9 <= self.log_interval:
             return
-        if self.inference_times:
+        if self.inference_times and self._latest is not None:
             average = float(np.mean(self.inference_times))
+            action = self._latest[0]
             self.get_logger().info(
                 f'inference {average:.1f} ms avg ({1000.0 / average:.1f} Hz), '
                 f'max {np.max(self.inference_times):.1f} ms | '
-                f'curvature {self.last_action.desired_curvature:+.4f} 1/m, '
-                f'accel {self.last_action.desired_acceleration:+.2f} m/s^2, '
-                f'v_ego {self.v_ego:.1f} m/s')
+                f'curvature {action.desired_curvature:+.4f} 1/m, '
+                f'accel {action.desired_acceleration:+.2f} m/s^2, '
+                f'v_ego {self.v_ego:.1f} m/s, '
+                f'path 3s ({action.path[20, 0]:+.1f}, {action.path[20, 1]:+.1f}) m')
             self.inference_times.clear()
         self.last_log_time = now
 
@@ -264,11 +352,14 @@ class OpenPilotControllerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = OpenPilotControllerNode()
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
 

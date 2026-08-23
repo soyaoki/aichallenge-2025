@@ -3,10 +3,18 @@
   <arg name="use_sim_time" default="true"/>
   <arg name="model_path" default="$(find-pkg-share openpilot_controller)/models/driving_supercombo.onnx"/>
   <arg name="provider" default="$(env OPENPILOT_PROVIDER auto)"/>
+  <!-- direct_action | trajectory -->
+  <arg name="output_mode" default="direct_action"/>
+  <!-- Observation only by default: check /openpilot/debug/markers in RViz first. -->
+  <arg name="control_enabled" default="false"/>
+  <arg name="trajectory_topic" default="/openpilot/trajectory"/>
 
   <include file="$(find-pkg-share openpilot_controller)/launch/openpilot.launch.xml">
     <arg name="model_path" value="$(var model_path)"/>
     <arg name="provider" value="$(var provider)"/>
+    <arg name="output_mode" value="$(var output_mode)"/>
+    <arg name="control_enabled" value="$(var control_enabled)"/>
+    <arg name="trajectory_topic" value="$(var trajectory_topic)"/>
     <arg name="image_topic" value="/sensing/camera/image_raw"/>
     <arg name="camera_info_topic" value="/sensing/camera/camera_info"/>
     <arg name="control_cmd_topic" value="/control/command/control_cmd"/>

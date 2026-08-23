@@ -27,6 +27,57 @@ make autoware-simulator
 `control_method:=openpilot` で選択される。既定の `control_method` は `mpc` のままなので、
 `reference.launch.xml` の既定値を変えるか launch 引数で明示的に渡すこと。
 
+## 段階的な立ち上げ
+
+**既定では車両制御を行わない** (`control.enabled: false`)。まずモデルが AWSIM の
+コースを「見えているか」を確認し、それから制御をつなぐ。
+
+### Phase 1: 予測経路の確認 (制御オフ)
+
+```bash
+ros2 launch ... control_method:=openpilot     # control_enabled は既定 false
+```
+
+RViz で `/openpilot/debug/markers` (`visualization_msgs/MarkerArray`, `base_link`) を表示する。
+
+| namespace | 内容 |
+|---|---|
+| `path` | 予測経路 (緑, 33 点 / 0〜10 秒) |
+| `lane_lines` | 車線 4 本。透明度が確率 |
+| `road_edges` | 路端 2 本 |
+
+**合格条件は「走ること」ではなく、コーナーに入る前に予測経路がコース方向へ曲がること。**
+ここが通らないうちに操舵をつないでも意味がない。曲がらない場合はまず
+`camera.calib_pitch` と `camera.hfov_deg` を疑う。
+
+### Phase 2: 制御に接続
+
+```bash
+# A. モデルの action を直接 control_cmd にする
+ros2 launch ... control_method:=openpilot openpilot_control_enabled:=true
+
+# B. モデルを planner として使い、追従は既存コントローラに任せる
+ros2 launch ... control_method:=openpilot openpilot_output_mode:=trajectory
+```
+
+`trajectory` モードでは予測経路を `autoware_auto_planning_msgs/Trajectory`
+(`base_link` 系) として `/openpilot/trajectory` に publish する。追従させるには
+このトピックを対象コントローラの入力へ remap し、そのコントローラを別途起動する。
+このモードでは `control_cmd` は publish しない。
+
+## 座標系
+
+comma の device frame は x 前 / y 右 / z 下、`base_link` は x 前 / y 左 / z 上 なので、
+既定では y と z を反転している。実走で符号を確認できるよう設定可能にしてある。
+
+```yaml
+frame:
+  swap_xy: false
+  invert_x: false
+  invert_y: true
+  invert_z: true
+```
+
 モデル重みは**リポジトリにコミットしていない**。提出用 tar (`create_submit_file.bash`) や
 評価用イメージのビルド前に `make openpilot-models` を実行しておく必要がある
 (評価実行時のネットワークアクセスは不要)。
@@ -86,6 +137,8 @@ python3 .../scripts/smoke_test.py --provider cuda   # GPU 側の確認
 |---|---|
 | `camera.hfov_deg` | `/camera_info` が来ない場合に仮定する水平画角。AWSIM のカメラに合わせる |
 | `camera.calib_pitch` | カメラの取り付けピッチ [rad]。地平線位置がずれると操舵が偏るので最初に調整する |
+| `control.enabled` | `false` の間は control_cmd を publish しない (既定) |
+| `output.mode` | `direct_action` / `trajectory` |
 | `control.max_speed` | plan 由来の目標速度の上限 [m/s] |
 | `control.max_lateral_accel` | openpilot 由来の横加速度上限 [m/s^2]。市販車向けの値なのでカートには保守的 |
 | `control.apply_curvature_limits` | 上記の安全包絡線を無効化する場合は `false` |
@@ -99,3 +152,6 @@ python3 .../scripts/smoke_test.py --provider cuda   # GPU 側の確認
 - モデルは実車の走行映像で学習されており、AWSIM のレース環境はドメイン外。
   カメラ内部パラメータと取り付け角を合わせないと妥当な出力にならない。
 - desire 入力は常にゼロ (車線変更プランナは無い)。
+- 固定した `driving_supercombo.onnx` の `output_slices` には `action` 出力が**無い**。
+  そのため openpilot 本体と同じく `plan` から desired curvature / acceleration を
+  導出している (`get_curvature_from_plan` / `get_accel_from_plan`)。
