@@ -1,0 +1,53 @@
+/**:
+  ros__parameters:
+    model:
+      # Filled in by launch/openpilot.launch.xml.
+      path: ""
+      # SHA-256 of commaai/openpilot @ 084747c7
+      # openpilot/selfdrive/modeld/models/driving_supercombo.onnx.
+      # The model's output_slices metadata is a pickle, so the file is verified
+      # before it is loaded. Clear this only for a locally built model.
+      sha256: "659727c4d4839adc4992a254409a54259a8756a743f2d567bf5fdc6579f8009b"
+      # auto | cpu | cuda | tensorrt. `auto` prefers TensorRT, then CUDA, then CPU,
+      # using whatever the installed onnxruntime build actually offers.
+      provider: "auto"
+      # 0 keeps the onnxruntime default.
+      intra_op_threads: 0
+
+    camera:
+      # Prefer /camera_info; hfov_deg is the fallback until the first message arrives.
+      use_camera_info: true
+      hfov_deg: 60.0
+      # device-from-calibrated-frame euler angles [rad]: mounting offset of the
+      # camera relative to the direction of travel. Tune pitch first.
+      calib_roll: 0.0
+      calib_pitch: 0.0
+      calib_yaw: 0.0
+
+    control:
+      publish_rate_hz: 20.0
+      command_timeout_sec: 0.5
+      timeout_deceleration: -2.0
+      # Actuator delays the model plans for [s].
+      lat_delay: 0.2
+      long_delay: 0.2
+      lat_smooth_seconds: 0.0
+      long_smooth_seconds: 0.3
+      # ISO-derived envelope from openpilot. The defaults are road-car limits and
+      # are conservative for a racing kart; raise them once the model tracks well.
+      apply_curvature_limits: true
+      max_curvature: 0.2
+      max_lateral_jerk: 5.0
+      max_lateral_accel: 3.0
+      max_acceleration: 2.0
+      max_deceleration: -4.0
+      max_speed: 30.0
+      # Japan drives on the left, i.e. right-hand drive.
+      is_rhd: true
+
+    vehicle:
+      wheel_base: 1.087
+      max_steering_tire_angle: 0.442
+
+    log_interval_sec: 5.0
+    debug: false

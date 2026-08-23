@@ -48,7 +48,7 @@ LOG_FILE="output/docker/${ts}-docker_build-$$.log"
 mkdir -p output/docker output/latest
 ln -sfn "${PWD}/${LOG_FILE}" output/latest/docker_build.log
 
-BUILD_ARGS=()
+BUILD_ARGS=(--build-arg "INSTALL_CUDNN9=${INSTALL_CUDNN9:-false}")
 if [ "$target" = "eval" ] && [ -n "${SUBMIT_TAR}" ]; then
     if [ ! -f "${SUBMIT_TAR}" ]; then
         echo "[ERROR] submit file not found: ${SUBMIT_TAR}" >&2

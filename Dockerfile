@@ -21,6 +21,16 @@ ENV QT_QPA_PLATFORMTHEME=qt5ct
 COPY requirements.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
+# onnxruntime's CUDA provider needs cuDNN 9, but PyTorch cu121 pins cuDNN 8.
+# Install cuDNN 9 into an isolated prefix that only openpilot_controller's node
+# puts on its LD_LIBRARY_PATH (see openpilot_controller/launch/openpilot.launch.xml).
+# Off by default because the wheel is large; enable with `make openpilot-gpu-deps`.
+ARG INSTALL_CUDNN9=false
+RUN if [ "${INSTALL_CUDNN9}" = "true" ]; then \
+      python3 -m pip install --no-cache-dir --no-deps --target /opt/openpilot-cudnn9 "nvidia-cudnn-cu12~=9.0" \
+      && chmod -R a+rX /opt/openpilot-cudnn9; \
+    fi
+
 # Provide a robust `colcon` wrapper which avoids setuptools "entry script"
 # dependency resolution issues (e.g. pkg_resources evaluating __requires__).
 RUN cat >/usr/local/bin/colcon <<'EOF'

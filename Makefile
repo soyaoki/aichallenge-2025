@@ -2,7 +2,8 @@
 SHELL := /bin/bash
 
 .PHONY: autoware-build autoware-vehicle autoware-simulator autoware-request-initialpose autoware-request-control  awsim-request-start awsim-request-reset autoware-driver-zenoh autoware-driver-zenoh-rosbag \
-	simulator dev dev2 dev3 dev4 driver zenoh download rviz2 down down_all ps autoware-attach autoware-bash eval
+	simulator dev dev2 dev3 dev4 driver zenoh download rviz2 down down_all ps autoware-attach autoware-bash eval \
+	openpilot-models openpilot-gpu-deps
 
 # Used by docker-compose.yml for build/eval artifact ownership.
 HOST_UID ?= $(shell id -u)
@@ -25,6 +26,17 @@ SIM_MODES += dev2 dev3 dev4 gate1 gate2 gate3
 .PHONY: $(addprefix simulator-,$(SIM_MODES))
 $(addprefix simulator-,$(SIM_MODES)): simulator-%:
 	@$(MAKE) simulator SIM_MODE=$*
+
+# Download and verify the comma.ai driving model used by control_method:=openpilot.
+# Idempotent; must be run before autoware-build, create_submit_file.bash or an eval image build.
+openpilot-models:
+	@aichallenge/workspace/src/aichallenge_submit/openpilot_controller/scripts/download_models.bash
+
+# Rebuild the dev image with cuDNN 9 in an isolated prefix so onnxruntime can use
+# its CUDA provider. Only needed for OPENPILOT_PROVIDER=cuda / tensorrt.
+openpilot-gpu-deps:
+	@echo "Rebuilding aichallenge-2025-dev with cuDNN 9 (/opt/openpilot-cudnn9)"
+	INSTALL_CUDNN9=true ./docker_build.sh dev
 
 # autowareのbuildのみ
 autoware-build:

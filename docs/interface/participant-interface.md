@@ -81,7 +81,7 @@ aichallenge_submit.launch.xml
 
 ```xml
 <arg name="control_method" default="mpc"
-     description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, joycon"/>
+     description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, openpilot, joycon, rl_train"/>
 ```
 
 各値が起動するノードと消費するセンサ:
@@ -92,11 +92,12 @@ aichallenge_submit.launch.xml
 | `pure_pursuit` | `simple_pure_pursuit`（C++） | `/localization/kinematic_state`、`/planning/scenario_planning/trajectory` |
 | `tiny_lidar_net` | `tiny_lidar_net_controller`（Python） | `/scan`（`sensor_msgs/LaserScan`） |
 | `pilot_net` | `pilot_net_controller`（Python） | `/image_raw`（`sensor_msgs/Image`） |
+| `openpilot` | `openpilot_controller`（Python） | `/image_raw`（`sensor_msgs/Image`）、`/camera_info`（`sensor_msgs/CameraInfo`）、`/vehicle/status/velocity_status` |
 | `joycon` | `teleop_manager`（`teleop_manager` パッケージ） | （手動制御） |
 
 各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されており、いずれも `/control/command/control_cmd`（`autoware_auto_control_msgs/AckermannControlCommand`）を publish します。
 
-上記 5 値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。
+上記の値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。
 
 ---
 
@@ -124,11 +125,12 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 |---|---|---|
 | `/scan` | `sensor_msgs/LaserScan` | `tiny_lidar_net_controller_node.py` の `create_subscription` |
 
-`pilot_net` 使用時の追加入力（要確認: AWSIM 側のカメラトピック名は本リポジトリ外）:
+`pilot_net` / `openpilot` 使用時の追加入力（要確認: AWSIM 側のカメラトピック名は本リポジトリ外）:
 
 | トピック | 型 | 確認元 |
 |---|---|---|
-| `/image_raw` | `sensor_msgs/Image` | `pilot_net_controller_node.py` の `create_subscription` |
+| `/image_raw` | `sensor_msgs/Image` | `pilot_net_controller_node.py`、`openpilot_controller_node.py` の `create_subscription` |
+| `/camera_info` | `sensor_msgs/CameraInfo` | `openpilot_controller_node.py` の `create_subscription`（カメラ内部パラメータ取得用、`openpilot` のみ） |
 
 ### (B) Autoware → AWSIM（参加者が publish すべき出力）
 
@@ -136,9 +138,9 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 
 | トピック | 型 | 確認元 |
 |---|---|---|
-| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py` |
+| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py`、`openpilot_controller_node.py` |
 
-AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net）がこのトピックに収束します。
+AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net / openpilot）がこのトピックに収束します。
 
 実車経路（`simulation=false`）のみ使用する追加出力:
 

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>openpilot_controller</name>
+  <version>0.0.0</version>
+  <description>End-to-end camera controller running comma.ai's driving_supercombo model</description>
+  <maintainer email="soyaokid@gmail.com">soyaokid</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>autoware_auto_control_msgs</depend>
+  <depend>autoware_auto_vehicle_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

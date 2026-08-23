@@ -32,6 +32,12 @@ tensorboard
 tomli==2.3.0
 packaging>=22.0
 
+# openpilot_controller (comma.ai driving_supercombo) の推論ランタイム。
+# CPU provider は常に使え、CUDA provider は cuDNN 9 がある場合のみ有効になる
+# (`make openpilot-gpu-deps` を参照)。CUDA/cuDNN を pip 依存として要求しないため
+# 上の PyTorch cu121 の pin とは衝突しない。
+onnxruntime-gpu==1.23.2
+
 # 強化学習用
 gymnasium
 stable-baselines3[extra]

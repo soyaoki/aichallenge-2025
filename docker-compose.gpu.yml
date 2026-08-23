@@ -4,6 +4,8 @@ x-gpu: &gpu
   environment:
     - NVIDIA_VISIBLE_DEVICES=all
     - NVIDIA_DRIVER_CAPABILITIES=all
+    # openpilot_controller の onnxruntime provider (auto | cpu | cuda | tensorrt)
+    - OPENPILOT_PROVIDER=${OPENPILOT_PROVIDER:-cuda}
   deploy:
     resources:
       reservations:

@@ -1,0 +1,32 @@
+<launch>
+
+  <arg name="openpilot_node_param" default="$(find-pkg-share openpilot_controller)/config/openpilot_controller.param.yaml"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="image_topic" default="/sensing/camera/image_raw"/>
+  <arg name="camera_info_topic" default="/sensing/camera/camera_info"/>
+  <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
+  <arg name="model_path" default="$(find-pkg-share openpilot_controller)/models/driving_supercombo.onnx"/>
+  <!-- auto | cpu | cuda | tensorrt. docker-compose.gpu.yml sets OPENPILOT_PROVIDER=cuda. -->
+  <arg name="provider" default="$(env OPENPILOT_PROVIDER auto)"/>
+  <!-- Isolated cuDNN 9 prefix for onnxruntime's CUDA provider, populated by
+       `make openpilot-gpu-deps`. Scoped to this node so it cannot shadow the
+       cuDNN 8 that PyTorch bundles. Harmless when the directory is absent. -->
+  <arg name="cudnn_prefix" default="/opt/openpilot-cudnn9/nvidia/cudnn/lib"/>
+
+  <node pkg="openpilot_controller"
+        exec="openpilot_controller_node.py"
+        name="openpilot_controller_node"
+        output="screen">
+
+    <env name="LD_LIBRARY_PATH" value="$(var cudnn_prefix):$(env LD_LIBRARY_PATH '')"/>
+
+    <param from="$(var openpilot_node_param)"/>
+    <param name="model.path" value="$(var model_path)"/>
+    <param name="model.provider" value="$(var provider)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <remap from="/image_raw" to="$(var image_topic)"/>
+    <remap from="/camera_info" to="$(var camera_info_topic)"/>
+    <remap from="/control/command/control_cmd" to="$(var control_cmd_topic)"/>
+  </node>
+
+</launch>

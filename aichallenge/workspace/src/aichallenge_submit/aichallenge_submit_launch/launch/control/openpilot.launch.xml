@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="model_path" default="$(find-pkg-share openpilot_controller)/models/driving_supercombo.onnx"/>
+  <arg name="provider" default="$(env OPENPILOT_PROVIDER auto)"/>
+
+  <include file="$(find-pkg-share openpilot_controller)/launch/openpilot.launch.xml">
+    <arg name="model_path" value="$(var model_path)"/>
+    <arg name="provider" value="$(var provider)"/>
+    <arg name="image_topic" value="/sensing/camera/image_raw"/>
+    <arg name="camera_info_topic" value="/sensing/camera/camera_info"/>
+    <arg name="control_cmd_topic" value="/control/command/control_cmd"/>
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+  </include>
+</launch>
