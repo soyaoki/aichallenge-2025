@@ -34,7 +34,8 @@ ml_workspace/
 │  ├─ osm2csv.py
 │  └─ convert_weight.py
 ├─ pilot_net/               # PilotNet 用のデータ変換・学習コード一式
-└─ reinforcement_learning/  # 強化学習用の学習・評価コード一式
+├─ reinforcement_learning/  # 強化学習用の学習・評価コード一式
+└─ dms/                     # openpilot のドライバー監視モデルを動画で試す実験用
 ```
 
 ## 各項目の説明
@@ -46,3 +47,4 @@ ml_workspace/
 - `tiny_lidar_net/`: TinyLiDARNet 用のデータ変換・学習・重み変換コード一式です。使い方は `aichallenge/ml_workspace/tiny_lidar_net/README.md` を参照してください。
 - `pilot_net/`: PilotNet 用のデータ変換・学習コード一式です。
 - `reinforcement_learning/`: 強化学習用の学習・評価コード一式です。
+- `dms/`: openpilot のドライバー監視モデル (`dmonitoring_model.onnx`) を手元の動画で動かす実験用です。競技の提出物ではありません。使い方は `aichallenge/ml_workspace/dms/README.md` を参照してください。
