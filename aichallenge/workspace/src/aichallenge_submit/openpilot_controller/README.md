@@ -46,6 +46,22 @@ RViz で `/openpilot/debug/markers` (`visualization_msgs/MarkerArray`, `base_lin
 | `lane_lines` | 車線 4 本。透明度が確率 |
 | `road_edges` | 路端 2 本 |
 
+さらに `/openpilot/debug/image` (`sensor_msgs/Image`, `bgr8`) に、予測を画像へ
+重畳したものを publish する。RViz の Image ディスプレイか `rqt_image_view` で見る。
+
+| `output.debug_image_source` | 内容 |
+|---|---|
+| `model_input` (既定) | **モデルが実際に食っている 512x256 のワープ画像**。画角・取り付けピッチのズレが最初に出るのはここ |
+| `camera` | 元のカメラ画像に予測を逆投影したもの |
+
+plan は 2D ではなくキャリブレーション座標系の 3D 点、lane_lines / road_edges は
+固定 `X_IDXS` 上の (y, z) 断面なので、カメラ内部パラメータで逆投影して重畳できる。
+経路のみカメラ高さ (`camera.height`) 分だけ下げて路面に乗せている (openpilot 本体の
+renderer と同じ扱い)。
+
+負荷が気になる場合は `output.debug_image_decimation` で間引くか
+`output.publish_debug_image: false` で止める。
+
 **合格条件は「走ること」ではなく、コーナーに入る前に予測経路がコース方向へ曲がること。**
 ここが通らないうちに操舵をつないでも意味がない。曲がらない場合はまず
 `camera.calib_pitch` と `camera.hfov_deg` を疑う。
@@ -125,9 +141,19 @@ CPU にフォールバックし、その旨がログに残る。
 モデルの有無・チェックサム・provider の選択・推論レートをまとめて確認する。
 
 ```bash
-python3 aichallenge/workspace/src/aichallenge_submit/openpilot_controller/scripts/smoke_test.py
+python3 .../scripts/smoke_test.py
 python3 .../scripts/smoke_test.py --provider cuda   # GPU 側の確認
 ```
+
+AWSIM のスクリーンショット 1 枚から重畳画像を描いて、画角・ピッチを詰める。
+
+```bash
+python3 .../scripts/render_debug_image.py --image frame.png --out /tmp
+python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
+```
+
+静止画を繰り返し入力するため 2 フレーム間の動きがゼロになり、モデルは「停止中」と
+判断して経路が極端に短くなる。この用途で見るのは**地平線の位置と車線・路端の当たり**。
 
 ## 主なパラメータ
 
@@ -137,6 +163,8 @@ python3 .../scripts/smoke_test.py --provider cuda   # GPU 側の確認
 |---|---|
 | `camera.hfov_deg` | `/camera_info` が来ない場合に仮定する水平画角。AWSIM のカメラに合わせる |
 | `camera.calib_pitch` | カメラの取り付けピッチ [rad]。地平線位置がずれると操舵が偏るので最初に調整する |
+| `camera.height` | カメラの路面からの高さ [m]。重畳画像で経路を路面に落とすためだけに使う |
+| `output.debug_image_source` | `model_input` / `camera` |
 | `control.enabled` | `false` の間は control_cmd を publish しない (既定) |
 | `output.mode` | `direct_action` / `trajectory` |
 | `control.max_speed` | plan 由来の目標速度の上限 [m/s] |

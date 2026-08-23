@@ -28,6 +28,7 @@ from openpilot_controller.transforms import (
     intrinsics_from_focal,
     prepare_model_frame,
     rgb_to_yuv_planes,
+    rot_from_euler,
 )
 
 # openpilot's modeld defaults
@@ -105,6 +106,8 @@ class OpenPilotCore:
         self._traffic_convention = np.zeros(ModelConstants.TRAFFIC_CONVENTION_LEN, dtype=np.float32)
         self._traffic_convention[int(self.control.is_rhd)] = 1.0
         self.prev_action = Action()
+        # Last frame handed to the network, kept for the debug image.
+        self.last_model_frame = None
 
     # -- calibration ------------------------------------------------------
     @property
@@ -125,9 +128,14 @@ class OpenPilotCore:
         if self.intrinsics is not None:
             self.set_intrinsics(self.intrinsics)
 
+    @property
+    def device_from_calib(self) -> np.ndarray:
+        return rot_from_euler(self.calib_euler)
+
     def reset(self) -> None:
         self.runner.reset()
         self.prev_action = Action()
+        self.last_model_frame = None
 
     # -- inference --------------------------------------------------------
     def process(self, rgb: np.ndarray, v_ego: float, dt: float = DT_MDL) -> Action:
@@ -137,6 +145,7 @@ class OpenPilotCore:
         yuv = rgb_to_yuv_planes(rgb)
         frame = prepare_model_frame(yuv, self._warp_main)
         big_frame = prepare_model_frame(yuv, self._warp_big)
+        self.last_model_frame = frame
 
         cfg = self.control
         v_ego = max(float(v_ego), 0.0)
@@ -197,7 +206,8 @@ class OpenPilotCore:
             path_yaw=plan[:, Plan.T_FROM_CURRENT_EULER][:, 2],
             path_yaw_rate=plan[:, Plan.ORIENTATION_RATE][:, 2],
             lane_lines=outputs['lane_lines'][0],
-            lane_lines_prob=outputs['lane_lines_prob'][0],
+            # Two values per lane line; upstream's laneLineProbs takes the odd ones.
+            lane_lines_prob=outputs['lane_lines_prob'][0][1::2],
             road_edges=outputs['road_edges'][0],
         )
         self.prev_action = action

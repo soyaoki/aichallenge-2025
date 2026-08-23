@@ -23,6 +23,10 @@
       calib_roll: 0.0
       calib_pitch: 0.0
       calib_yaw: 0.0
+      # Camera height above the road [m]; racing_kart_sensor_kit puts camera_link
+      # at z=0.7. Only used to drop the predicted path onto the road in the debug
+      # image, the way openpilot's own renderer does.
+      height: 0.7
 
     output:
       # direct_action: publish AckermannControlCommand from the model's action.
@@ -32,6 +36,15 @@
       frame_id: "base_link"
       # Predicted path / lane lines / road edges for RViz. Look at these first.
       publish_markers: true
+      # Same prediction drawn back onto an image, on /openpilot/debug/image.
+      publish_debug_image: true
+      # model_input: the warped 512x256 frame the network is actually fed, which is
+      #   where a wrong camera FOV or mounting pitch shows up first.
+      # camera: the untouched camera image with the prediction projected onto it.
+      debug_image_source: "model_input"
+      debug_image_scale: 2
+      # Publish every Nth frame when the debug image costs too much.
+      debug_image_decimation: 1
 
     # comma's device frame is x->forward, y->right, z->down; base_link is
     # x->forward, y->left, z->up. Confirm against a real drive before trusting it.

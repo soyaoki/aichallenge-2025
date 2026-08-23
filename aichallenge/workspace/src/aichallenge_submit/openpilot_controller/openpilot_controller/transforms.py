@@ -117,3 +117,43 @@ def prepare_model_frame(yuv_planes, warp_matrix: np.ndarray,
     frame[4] = warped_u
     frame[5] = warped_v
     return frame
+
+
+def model_frame_to_rgb(frame: np.ndarray) -> np.ndarray:
+    """A (6, H/2, W/2) model frame back to an (H, W, 3) RGB image.
+
+    Inverse of `prepare_model_frame`'s channel packing, for showing exactly what
+    the network was fed.
+    """
+    half_height, half_width = frame.shape[1], frame.shape[2]
+    height, width = half_height * 2, half_width * 2
+    i420 = np.empty((height * 3 // 2, width), dtype=np.uint8)
+    y = i420[:height]
+    y[0::2, 0::2] = frame[0]
+    y[1::2, 0::2] = frame[1]
+    y[0::2, 1::2] = frame[2]
+    y[1::2, 1::2] = frame[3]
+    uv_rows = height // 4
+    i420[height:height + uv_rows] = frame[4].reshape(uv_rows, width)
+    i420[height + uv_rows:] = frame[5].reshape(uv_rows, width)
+    return cv2.cvtColor(i420, cv2.COLOR_YUV2RGB_I420)
+
+
+def project_calib_points(points: np.ndarray, intrinsics: np.ndarray,
+                         device_from_calib: np.ndarray | None = None,
+                         min_depth: float = 0.5):
+    """Calibrated-frame points -> image pixels.
+
+    Returns (pixels, valid), where `valid` marks the points that are in front of
+    the camera. `device_from_calib` is the calibration rotation; pass None when
+    projecting into the model frame, which is defined without it.
+    """
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if device_from_calib is not None:
+        points = points @ device_from_calib.T
+    view = points @ view_frame_from_device_frame.T
+    depth = view[:, 2]
+    valid = depth > min_depth
+    safe = np.where(valid, depth, 1.0)
+    pixels = (view / safe[:, None]) @ intrinsics.T
+    return pixels[:, :2], valid

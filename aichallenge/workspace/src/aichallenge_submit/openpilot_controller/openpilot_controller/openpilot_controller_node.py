@@ -28,13 +28,14 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
 from visualization_msgs.msg import MarkerArray
 from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import VelocityReport
 
+from openpilot_controller.debug_image import build_debug_image
 from openpilot_controller.debug_publisher import build_markers
 from openpilot_controller.drive_helpers import DT_MDL
 from openpilot_controller.frames import FrameConfig
@@ -58,10 +59,16 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('camera.calib_roll', 0.0)
         self.declare_parameter('camera.calib_pitch', 0.0)
         self.declare_parameter('camera.calib_yaw', 0.0)
+        self.declare_parameter('camera.height', 0.7)
 
         self.declare_parameter('output.mode', 'direct_action')
         self.declare_parameter('output.frame_id', 'base_link')
         self.declare_parameter('output.publish_markers', True)
+        self.declare_parameter('output.publish_debug_image', True)
+        # model_input: the warped frame the network is fed. camera: the raw camera image.
+        self.declare_parameter('output.debug_image_source', 'model_input')
+        self.declare_parameter('output.debug_image_scale', 2)
+        self.declare_parameter('output.debug_image_decimation', 1)
 
         self.declare_parameter('frame.swap_xy', False)
         self.declare_parameter('frame.invert_x', False)
@@ -145,6 +152,7 @@ class OpenPilotControllerNode(Node):
 
         self.use_camera_info = bool(self.get_parameter('camera.use_camera_info').value)
         self.hfov_deg = float(self.get_parameter('camera.hfov_deg').value)
+        self.camera_height = float(self.get_parameter('camera.height').value)
         self.wheel_base = float(self.get_parameter('vehicle.wheel_base').value)
         self.max_steer = float(self.get_parameter('vehicle.max_steering_tire_angle').value)
         self.command_timeout = float(self.get_parameter('control.command_timeout_sec').value)
@@ -181,6 +189,19 @@ class OpenPilotControllerNode(Node):
         self.pub_markers = None
         if bool(self.get_parameter('output.publish_markers').value):
             self.pub_markers = self.create_publisher(MarkerArray, '/openpilot/debug/markers', 1)
+
+        self.pub_debug_image = None
+        self.debug_image_source = str(self.get_parameter('output.debug_image_source').value)
+        self.debug_image_scale = max(1, int(self.get_parameter('output.debug_image_scale').value))
+        self.debug_image_decimation = max(1, int(self.get_parameter('output.debug_image_decimation').value))
+        self._debug_image_counter = 0
+        if bool(self.get_parameter('output.publish_debug_image').value):
+            if self.debug_image_source not in ('model_input', 'camera'):
+                raise RuntimeError(
+                    f"unknown output.debug_image_source '{self.debug_image_source}', "
+                    "expected model_input or camera")
+            self.pub_debug_image = self.create_publisher(
+                Image, '/openpilot/debug/image', qos_profile_sensor_data)
 
         self.pub_trajectory = None
         self.pub_control = None
@@ -261,8 +282,50 @@ class OpenPilotControllerNode(Node):
             self.pub_trajectory.publish(
                 build_trajectory(action, stamp, self.frame_config, frame_id=self.output_frame,
                                  max_speed=self.core.control.max_speed))
+        self._publish_debug_image(action, image, stamp, msg.header.frame_id)
 
         self._log_performance_metrics()
+
+    def _publish_debug_image(self, action, camera_rgb, stamp, frame_id: str):
+        if self.pub_debug_image is None:
+            return
+        self._debug_image_counter += 1
+        if self._debug_image_counter % self.debug_image_decimation:
+            return
+        try:
+            picture = build_debug_image(
+                action, self.core.last_model_frame,
+                source=self.debug_image_source,
+                camera_rgb=camera_rgb,
+                camera_intrinsics=self.core.intrinsics,
+                device_from_calib=self.core.device_from_calib,
+                scale=self.debug_image_scale,
+                hud_lines=self._hud_lines(action),
+                path_z_offset=self.camera_height,
+            )
+        except Exception as exc:
+            self.get_logger().warn(f'debug image failed: {exc}', throttle_duration_sec=5.0)
+            return
+
+        message = Image()
+        message.header.stamp = stamp
+        message.header.frame_id = frame_id or 'camera'
+        message.height, message.width = picture.shape[0], picture.shape[1]
+        message.encoding = 'bgr8'
+        message.is_bigendian = 0
+        message.step = picture.shape[1] * 3
+        message.data = picture.tobytes()
+        self.pub_debug_image.publish(message)
+
+    def _hud_lines(self, action):
+        mode = self.output_mode if self.output_mode == 'trajectory' else (
+            'direct_action' if self.control_enabled else 'direct_action (control off)')
+        inference = f'{np.mean(self.inference_times[-20:]):.0f}ms' if self.inference_times else '--'
+        return (
+            f'curv {action.desired_curvature:+.4f} 1/m   accel {action.desired_acceleration:+.2f} m/s2',
+            f'v_ego {self.v_ego:.1f}   target {action.target_speed:.1f} m/s   {inference}',
+            f'{mode}   {self.core.runner.active_providers[0].replace("ExecutionProvider", "")}',
+        )
 
     # -- control ----------------------------------------------------------
     def publish_control(self):

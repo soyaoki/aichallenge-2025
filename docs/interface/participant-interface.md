@@ -153,6 +153,7 @@ AWSIM はこのトピックを受けてカートを動かします。全制御�
 | トピック | 型 | 用途 |
 |---|---|---|
 | `/openpilot/debug/markers` | `visualization_msgs/MarkerArray` | 予測経路・車線・路端（`base_link` 系）の RViz 表示 |
+| `/openpilot/debug/image` | `sensor_msgs/Image`（`bgr8`） | 予測をモデル入力画像／カメラ画像へ重畳したもの |
 | `/openpilot/trajectory` | `autoware_auto_planning_msgs/Trajectory` | `output_mode=trajectory` のときのみ。既存コントローラに追従させる用 |
 
 実車経路（`simulation=false`）のみ使用する追加出力:
