@@ -105,6 +105,9 @@
     vehicle:
       wheel_base: 1.087
       max_steering_tire_angle: 0.442
+      # simple_pure_pursuit applies 1.5 against AWSIM (1.639 on the real kart); the
+      # bicycle-model angle on its own under-steers by that factor.
+      steering_tire_angle_gain: 1.5
 
     log_interval_sec: 5.0
     debug: false

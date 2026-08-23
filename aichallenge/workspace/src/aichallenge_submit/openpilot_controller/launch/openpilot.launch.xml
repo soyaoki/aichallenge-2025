@@ -14,6 +14,11 @@
   <arg name="output_mode" default="direct_action"/>
   <!-- base_link, or map when a downstream controller has to follow the trajectory. -->
   <arg name="output_frame" default="base_link"/>
+  <!-- Handy to sweep from the environment without editing the param file. -->
+  <arg name="calib_pitch" default="$(eval &quot;'$(env OPENPILOT_CALIB_PITCH 0.0)' or '0.0'&quot;)"/>
+  <arg name="steering_gain" default="$(eval &quot;'$(env OPENPILOT_STEERING_GAIN 1.5)' or '1.5'&quot;)"/>
+  <arg name="launch_speed" default="$(eval &quot;'$(env OPENPILOT_LAUNCH_SPEED 3.0)' or '3.0'&quot;)"/>
+  <arg name="calibration_min_speed" default="$(eval &quot;'$(env OPENPILOT_CALIB_MIN_SPEED 3.0)' or '3.0'&quot;)"/>
   <!-- Observation only until this is true: markers are published either way. -->
   <arg name="control_enabled" default="false"/>
   <!-- onnxruntime's CUDA provider needs cuDNN 9 plus the CUDA runtime libraries.
@@ -36,6 +41,10 @@
     <param name="model.provider" value="$(var provider)"/>
     <param name="output.mode" value="$(var output_mode)"/>
     <param name="output.frame_id" value="$(var output_frame)"/>
+    <param name="camera.calib_pitch" value="$(var calib_pitch)"/>
+    <param name="vehicle.steering_tire_angle_gain" value="$(var steering_gain)"/>
+    <param name="control.launch_speed" value="$(var launch_speed)"/>
+    <param name="camera.calibration_min_speed" value="$(var calibration_min_speed)"/>
     <param name="control.enabled" value="$(var control_enabled)"/>
     <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="/image_raw" to="$(var image_topic)"/>

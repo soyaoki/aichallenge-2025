@@ -116,6 +116,9 @@ class OpenPilotControllerNode(Node):
 
         self.declare_parameter('vehicle.wheel_base', 1.087)
         self.declare_parameter('vehicle.max_steering_tire_angle', 0.442)
+        # simple_pure_pursuit uses 1.5 against AWSIM and 1.639 on the real kart, so the
+        # bicycle-model angle alone under-steers here by that factor.
+        self.declare_parameter('vehicle.steering_tire_angle_gain', 1.5)
 
         self.declare_parameter('log_interval_sec', 5.0)
         self.declare_parameter('debug', False)
@@ -198,6 +201,7 @@ class OpenPilotControllerNode(Node):
             self._calibration_saves = 0
         self.wheel_base = float(self.get_parameter('vehicle.wheel_base').value)
         self.max_steer = float(self.get_parameter('vehicle.max_steering_tire_angle').value)
+        self.steering_gain = float(self.get_parameter('vehicle.steering_tire_angle_gain').value)
         self.command_timeout = float(self.get_parameter('control.command_timeout_sec').value)
         self.timeout_decel = float(self.get_parameter('control.timeout_deceleration').value)
         self.launch_speed = float(self.get_parameter('control.launch_speed').value)
@@ -484,7 +488,7 @@ class OpenPilotControllerNode(Node):
             self._publish_safe_stop(command)
             return
 
-        steering = math.atan(self.wheel_base * action.desired_curvature)
+        steering = self.steering_gain * math.atan(self.wheel_base * action.desired_curvature)
         acceleration = action.desired_acceleration
         target_speed = action.target_speed
         launching = self.launch_speed > 0.0 and self.v_ego < self.launch_speed
