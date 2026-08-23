@@ -9,7 +9,10 @@ at instead is the mounting error, so the estimate is fed back into the warp.
 Roll is assumed to be zero, as upstream does.
 """
 
+import os
+
 import numpy as np
+import yaml
 
 from openpilot_controller.transforms import rot_from_euler
 
@@ -52,6 +55,10 @@ class Calibrator:
         self.valid_blocks = 0
         self.old_rpy = np.array(rpy_init, dtype=np.float64)
         self.old_rpy_weight = 0.0
+        self.seen = 0
+        self.accepted = 0
+        self.fast_frames = 0
+        self.straight_frames = 0
 
     @property
     def calibrated(self) -> bool:
@@ -60,6 +67,15 @@ class Calibrator:
     @property
     def progress(self) -> float:
         return min(1.0, self.valid_blocks / INPUTS_NEEDED)
+
+    def status(self) -> str:
+        """Why calibration is or is not progressing, for the periodic log."""
+        if self.seen == 0:
+            return 'no frames yet'
+        pct = lambda n: 100.0 * n / self.seen  # noqa: E731
+        return (f'{self.accepted}/{BLOCK_SIZE * INPUTS_NEEDED} usable frames '
+                f'({self.valid_blocks}/{INPUTS_NEEDED} blocks); of {self.seen} seen, '
+                f'{pct(self.fast_frames):.0f}% fast enough and {pct(self.straight_frames):.0f}% straight enough')
 
     def sanity_clip(self, rpy: np.ndarray) -> np.ndarray:
         if np.isnan(rpy).any():
@@ -76,12 +92,16 @@ class Calibrator:
     def handle_pose(self, trans, rot, trans_std, v_ego: float):
         """One model frame. Returns the updated euler angles, or None if not used."""
         self.old_rpy_weight = max(0.0, self.old_rpy_weight - 1.0 / SMOOTH_CYCLES)
+        self.seen += 1
 
-        straight_and_fast = (v_ego > self.min_speed and trans[0] > self.min_speed
-                             and abs(rot[2]) < self.max_yaw_rate)
+        fast = v_ego > self.min_speed and trans[0] > self.min_speed
+        straight = abs(rot[2]) < self.max_yaw_rate
+        self.fast_frames += bool(fast)
+        self.straight_frames += bool(straight)
         certain = np.arctan2(abs(trans_std[1]), max(trans[0], 1e-3)) < self.max_vel_angle_std
-        if not (straight_and_fast and (certain or not self.calibrated)):
+        if not (fast and straight and (certain or not self.calibrated)):
             return None
+        self.accepted += 1
 
         observed_rpy = np.array([0.0,
                                  -np.arctan2(trans[2], trans[0]),
@@ -99,3 +119,28 @@ class Calibrator:
 
         self.rpy = np.mean(self.rpys[:max(self.valid_blocks, 1)], axis=0)
         return self.rpy
+
+
+def load_calibration(path: str):
+    """Read a saved estimate. Returns (rpy, valid_blocks) or None."""
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as handle:
+            saved = yaml.safe_load(handle) or {}
+        rpy = np.array([float(saved["roll"]), float(saved["pitch"]), float(saved["yaw"])])
+        if not np.isfinite(rpy).all():
+            return None
+        return rpy, int(saved.get("valid_blocks", 0))
+    except Exception:
+        return None
+
+
+def save_calibration(path: str, rpy, valid_blocks: int) -> None:
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    temporary = path + ".tmp"
+    with open(temporary, "w") as handle:
+        yaml.safe_dump({"roll": float(rpy[0]), "pitch": float(rpy[1]), "yaw": float(rpy[2]),
+                        "valid_blocks": int(valid_blocks)}, handle)
+    os.replace(temporary, path)

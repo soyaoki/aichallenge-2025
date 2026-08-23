@@ -205,10 +205,32 @@ python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
 observed = [0, -atan2(trans_z, trans_x), atan2(trans_y, trans_x)]
 ```
 
-直進かつ `calibration_min_speed` 以上、ヨーレート 2 deg/s 未満のフレームのみ採用し、
-100 フレーム × 5 ブロックで収束。**AWSIM のカートではこの条件を満たす直進が続かず、
-現状は収束しない。** 手で詰める場合は `scripts/render_debug_image.py --calib-pitch`
-で AWSIM のスクショに対して掃引する。
+直進かつ `calibration_min_speed` 以上、ヨーレート `calibration_max_yaw_rate_deg`
+未満のフレームのみ採用し、100 フレーム × 5 ブロックで収束する。
+
+他のコントローラに運転させながら観測だけさせられる (実機の openpilot が人間の運転中に
+キャリブレするのと同じ)。結果は `calibration_file` に保存され次回起動時に読まれる。
+
+```bash
+OPENPILOT_OBSERVE=true docker compose up -d autoware   # MPC が走り openpilot は観測のみ
+```
+
+**ただし citycircuit では収束しない。** 実測 (MPC 運転、120 フレーム):
+
+| ゲート | 通過率 |
+|---|---|
+| `v_ego > 3.0` | 33 % |
+| 予測 `trans_x > 3.0` | 40 % |
+| ヨーレート < 2 deg/s | 55 % (ほぼ停止中のフレーム) |
+| 3 つ同時 | **0 %** |
+
+走行中のヨーレート中央値は 24.7 deg/s で、サーキットに openpilot が要求する
+直進区間が存在しない。`calibration_max_yaw_rate_deg` を上げれば推定は始まるが、
+旋回中のフレームは並進方向がカメラ光軸と一致しないので推定が偏る。
+収束状況は 20 秒ごとに `calibration: ...` としてログに出る。
+
+手で詰める場合は `scripts/render_debug_image.py --calib-pitch` で AWSIM の
+スクショに対して掃引する。
 
 ## 既知の制約
 
@@ -229,8 +251,13 @@ observed = [0, -atan2(trans_z, trans_x), atan2(trans_y, trans_x)]
   水平 90 度を 384 px で見るため角度分解能は 0.23 deg/px。openpilot 実機 (焦点距離
   2648) の 0.022 deg/px に対して約 10 倍粗い。さらにモデルフレームが使うのは水平の
   約 28 % (108 px) で、これを 512 px に引き伸ばしている。リサイズでは情報は戻らない。
-- AWSIM のカート環境に対してモデルの車線確率は 0.00〜0.04 しか出ない。
-  取り付け角を掃引しても変わらないので、これは調整の問題ではなく分布外の問題。
+- **自車運動の推定は効いている。** 録画した AWSIM シーケンス (9.5 Hz, 120 フレーム) を
+  流すと、予測前進速度は実測 5.25 → 5.39、3.57 → 3.37、停止中は 0.00 と追従し、
+  平均絶対誤差 1.43 m/s。ワープ・時系列スタック・パース自体は機能している。
+- **一方で車線・路端の意味理解は出ていない。** 車線確率は 0.00〜0.04、路端の
+  標準偏差は 22.7 m 先で 5.7〜7.6 m と道路幅より大きい。左右反転しても路端は
+  符号反転しない (事前分布に近い)。オプティカルフロー由来の自車運動は
+  ドメインを跨いで効くが、車線の意味論は効かない、という切り分け。
 - 固定した `driving_supercombo.onnx` の `output_slices` には `action` 出力が**無い**。
   そのため openpilot 本体と同じく `plan` から desired curvature / acceleration を
   導出している (`get_curvature_from_plan` / `get_accel_from_plan`)。

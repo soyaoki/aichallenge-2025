@@ -36,7 +36,7 @@ from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import VelocityReport
 
-from openpilot_controller.calibration import Calibrator
+from openpilot_controller.calibration import Calibrator, load_calibration, save_calibration
 from openpilot_controller.debug_image import build_debug_image
 from openpilot_controller.debug_publisher import build_markers
 from openpilot_controller.drive_helpers import DT_MDL
@@ -70,6 +70,13 @@ class OpenPilotControllerNode(Node):
         # of relying on the calib_* parameters being right.
         self.declare_parameter('camera.auto_calibration', True)
         self.declare_parameter('camera.calibration_min_speed', 3.0)
+        # openpilot uses 2 deg/s, which assumes highway straights. A kart circuit is
+        # almost all corners, so nothing qualifies unless this is relaxed - at the
+        # cost of biasing the estimate with turning frames.
+        self.declare_parameter('camera.calibration_max_yaw_rate_deg', 2.0)
+        # Persisted so a calibration run (another controller drives while this node
+        # only observes) carries over to the next run.
+        self.declare_parameter('camera.calibration_file', '/aichallenge/calibration/openpilot_calibration.yaml')
 
         self.declare_parameter('output.mode', 'direct_action')
         self.declare_parameter('output.frame_id', 'base_link')
@@ -168,12 +175,27 @@ class OpenPilotControllerNode(Node):
         self.use_camera_info = bool(self.get_parameter('camera.use_camera_info').value)
         self.hfov_deg = float(self.get_parameter('camera.hfov_deg').value)
         self.camera_height = float(self.get_parameter('camera.height').value)
+        self.calibration_file = str(self.get_parameter('camera.calibration_file').value)
+        saved = load_calibration(self.calibration_file)
+        if saved is not None:
+            calib_euler = tuple(saved[0])
+            self.core.set_calibration_euler(calib_euler)
+            self.get_logger().info(
+                f'loaded calibration from {self.calibration_file}: '
+                f'pitch {calib_euler[1]:+.4f} rad ({np.degrees(calib_euler[1]):+.2f} deg), '
+                f'yaw {calib_euler[2]:+.4f} rad ({np.degrees(calib_euler[2]):+.2f} deg)')
+
         self.calibrator = None
         if bool(self.get_parameter('camera.auto_calibration').value):
             self.calibrator = Calibrator(
-                min_speed=float(self.get_parameter('camera.calibration_min_speed').value))
+                min_speed=float(self.get_parameter('camera.calibration_min_speed').value),
+                max_yaw_rate=np.radians(
+                    float(self.get_parameter('camera.calibration_max_yaw_rate_deg').value)))
             self.calibrator.reset(calib_euler)
-            self._calibration_reported = False
+            if saved is not None:
+                self.calibrator.valid_blocks = saved[1]
+            self._calibration_reported = self.calibrator.calibrated
+            self._calibration_saves = 0
         self.wheel_base = float(self.get_parameter('vehicle.wheel_base').value)
         self.max_steer = float(self.get_parameter('vehicle.max_steering_tire_angle').value)
         self.command_timeout = float(self.get_parameter('control.command_timeout_sec').value)
@@ -343,16 +365,29 @@ class OpenPilotControllerNode(Node):
             return
         rpy = self.calibrator.handle_pose(action.pose[:3], action.pose[3:],
                                           action.pose_std[:3], self.v_ego)
+        if not self.calibrator.calibrated:
+            # Silence here used to look identical to success; say why it is stalled.
+            self.get_logger().info(f'calibration: {self.calibrator.status()}',
+                                   throttle_duration_sec=20.0)
         if rpy is None:
             return
         if not np.allclose(rpy, self.core.calib_euler, atol=1e-4):
             self.core.set_calibration_euler(rpy)
-        if self.calibrator.calibrated and not self._calibration_reported:
+        if not self.calibrator.calibrated:
+            return
+        if not self._calibration_reported:
             self._calibration_reported = True
             self.get_logger().info(
                 f'camera calibrated from the model pose: pitch {rpy[1]:+.4f} rad '
                 f'({np.degrees(rpy[1]):+.2f} deg), yaw {rpy[2]:+.4f} rad '
                 f'({np.degrees(rpy[2]):+.2f} deg)')
+        self._calibration_saves += 1
+        if self.calibration_file and self._calibration_saves % 100 == 1:
+            try:
+                save_calibration(self.calibration_file, rpy, self.calibrator.valid_blocks)
+            except Exception as exc:
+                self.get_logger().warn(f'could not save calibration: {exc}',
+                                       throttle_duration_sec=30.0)
 
     # Frames to run before timing anything: the first CUDA inferences and the rest
     # of the stack coming up are far slower than the steady state, and sampling them

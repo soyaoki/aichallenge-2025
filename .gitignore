@@ -25,3 +25,6 @@ doc/tmp/*
 
 docs/plan/
 result-*.json
+
+# openpilot_controller の自己キャリブレーション結果 (実行時に生成)
+aichallenge/calibration/

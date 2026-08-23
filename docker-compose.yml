@@ -29,6 +29,7 @@ x-autoware-base: &autoware-base
     - CONTROL_METHOD=${CONTROL_METHOD:-}
     - OPENPILOT_CONTROL_ENABLED=${OPENPILOT_CONTROL_ENABLED:-}
     - OPENPILOT_OUTPUT_MODE=${OPENPILOT_OUTPUT_MODE:-}
+    - OPENPILOT_OBSERVE=${OPENPILOT_OBSERVE:-}
   volumes:
     - ./output:${OUTPUT_ROOT:-/output}
     - ./aichallenge:/aichallenge

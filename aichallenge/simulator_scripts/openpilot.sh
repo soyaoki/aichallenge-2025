@@ -15,21 +15,17 @@ exec $AWSIM_DIRECTORY/AWSIM.x86_64 \
     --start-count-seconds 5 \
     --vehicles 1 \
     --npcs 0 \
-    --boosts 0 \
-    --laps 6 \
-    --timeout 600.0 \
+    --boosts 2 \
+    --laps unlimited \
+    --timeout 10000000.0 \
     --steer-source ackermann \
     --sound off \
     --collisions on \
     --handicap off \
     --wall-recovery on \
-    --start-random off \
     --ranking off \
     --camera gpu \
-    --lidar off \
-    --imu on \
-    --gnss on \
-    --v2x off
+    --lidar off
 
 # Cameraを使う場合 : --camera cpu or gpu
 # LiDARを使う場合 : --lidar cpu or gpu

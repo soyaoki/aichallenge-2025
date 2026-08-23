@@ -169,6 +169,18 @@
        markers but no control command is sent until openpilot_control_enabled is true. -->
   <arg name="openpilot_control_enabled" default="$(eval &quot;'$(env OPENPILOT_CONTROL_ENABLED false)' or 'false'&quot;)"/>
   <arg name="openpilot_output_mode" default="$(eval &quot;'$(env OPENPILOT_OUTPUT_MODE direct_action)' or 'direct_action'&quot;)" description="direct_action or trajectory"/>
+  <!-- Run the openpilot node alongside a different controller, observing only. This
+       is how openpilot calibrates on a real car: something else drives while
+       calibrationd watches, and the estimate is saved for the next run. -->
+  <arg name="openpilot_observe" default="$(eval &quot;'$(env OPENPILOT_OBSERVE false)' or 'false'&quot;)"/>
+  <group if="$(eval &quot;'$(var openpilot_observe)' == 'true' and '$(var control_method)' != 'openpilot'&quot;)">
+    <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/openpilot.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="control_enabled" value="false"/>
+      <arg name="output_mode" value="direct_action"/>
+    </include>
+  </group>
+
   <group if="$(eval &quot;'$(var control_method)' == 'openpilot'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/openpilot.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>

@@ -32,6 +32,14 @@
       # above are the starting point. Needs ~500 straight, fast frames to converge.
       auto_calibration: true
       calibration_min_speed: 3.0
+      # openpilot's 2 deg/s assumes highway straights; a kart circuit is almost all
+      # corners and nothing qualifies. Relaxing it lets an estimate form, but turning
+      # frames bias it.
+      calibration_max_yaw_rate_deg: 2.0
+      # Written once converged and read back at startup, so a calibration run
+      # (another controller drives, this node only observes) carries over.
+      # Set to "" to disable persistence.
+      calibration_file: "/aichallenge/calibration/openpilot_calibration.yaml"
 
     output:
       # direct_action: publish AckermannControlCommand from the model's action.
