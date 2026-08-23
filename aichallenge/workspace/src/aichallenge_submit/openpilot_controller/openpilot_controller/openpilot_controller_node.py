@@ -29,12 +29,14 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import CameraInfo, Image
 from visualization_msgs.msg import MarkerArray
 from autoware_auto_control_msgs.msg import AckermannControlCommand
 from autoware_auto_planning_msgs.msg import Trajectory
 from autoware_auto_vehicle_msgs.msg import VelocityReport
 
+from openpilot_controller.calibration import Calibrator
 from openpilot_controller.debug_image import build_debug_image
 from openpilot_controller.debug_publisher import build_markers
 from openpilot_controller.drive_helpers import DT_MDL
@@ -64,6 +66,10 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('camera.calib_pitch', 0.0)
         self.declare_parameter('camera.calib_yaw', 0.0)
         self.declare_parameter('camera.height', 0.7)
+        # Estimate the mounting angles while driving, the way openpilot does, instead
+        # of relying on the calib_* parameters being right.
+        self.declare_parameter('camera.auto_calibration', True)
+        self.declare_parameter('camera.calibration_min_speed', 3.0)
 
         self.declare_parameter('output.mode', 'direct_action')
         self.declare_parameter('output.frame_id', 'base_link')
@@ -72,7 +78,7 @@ class OpenPilotControllerNode(Node):
         # model_input: the warped frame the network is fed. camera: the raw camera image.
         self.declare_parameter('output.debug_image_source', 'model_input')
         self.declare_parameter('output.debug_image_scale', 2)
-        self.declare_parameter('output.debug_image_decimation', 1)
+        self.declare_parameter('output.debug_image_decimation', 5)
 
         self.declare_parameter('frame.swap_xy', False)
         self.declare_parameter('frame.invert_x', False)
@@ -87,9 +93,9 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('control.lat_smooth_seconds', 0.0)
         self.declare_parameter('control.long_smooth_seconds', 0.3)
         self.declare_parameter('control.apply_curvature_limits', True)
-        self.declare_parameter('control.max_curvature', 0.2)
-        self.declare_parameter('control.max_lateral_jerk', 5.0)
-        self.declare_parameter('control.max_lateral_accel', 3.0)
+        self.declare_parameter('control.max_curvature', 0.44)
+        self.declare_parameter('control.max_lateral_jerk', 20.0)
+        self.declare_parameter('control.max_lateral_accel', 8.0)
         self.declare_parameter('control.max_acceleration', 2.0)
         self.declare_parameter('control.max_deceleration', -4.0)
         self.declare_parameter('control.max_speed', 30.0)
@@ -162,6 +168,12 @@ class OpenPilotControllerNode(Node):
         self.use_camera_info = bool(self.get_parameter('camera.use_camera_info').value)
         self.hfov_deg = float(self.get_parameter('camera.hfov_deg').value)
         self.camera_height = float(self.get_parameter('camera.height').value)
+        self.calibrator = None
+        if bool(self.get_parameter('camera.auto_calibration').value):
+            self.calibrator = Calibrator(
+                min_speed=float(self.get_parameter('camera.calibration_min_speed').value))
+            self.calibrator.reset(calib_euler)
+            self._calibration_reported = False
         self.wheel_base = float(self.get_parameter('vehicle.wheel_base').value)
         self.max_steer = float(self.get_parameter('vehicle.max_steering_tire_angle').value)
         self.command_timeout = float(self.get_parameter('control.command_timeout_sec').value)
@@ -173,6 +185,7 @@ class OpenPilotControllerNode(Node):
         self.log_interval = float(self.get_parameter('log_interval_sec').value)
 
         self.v_ego = 0.0
+        self._ego_pose = None
         # (action, stamp) written as one tuple so the control timer can never read
         # an action paired with the wrong timestamp.
         self._latest = None
@@ -204,6 +217,10 @@ class OpenPilotControllerNode(Node):
         self.create_subscription(VelocityReport, '/vehicle/status/velocity_status',
                                  self.velocity_callback, sensor_qos,
                                  callback_group=self.control_group)
+        if self.output_frame != 'base_link':
+            self.create_subscription(Odometry, '/localization/kinematic_state',
+                                     self.odometry_callback, 1,
+                                     callback_group=self.control_group)
 
         self.pub_markers = None
         if bool(self.get_parameter('output.publish_markers').value):
@@ -264,6 +281,13 @@ class OpenPilotControllerNode(Node):
     def velocity_callback(self, msg: VelocityReport):
         self.v_ego = float(msg.longitudinal_velocity)
 
+    def odometry_callback(self, msg: Odometry):
+        position = msg.pose.pose.position
+        q = msg.pose.pose.orientation
+        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                         1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        self._ego_pose = (position.x, position.y, position.z, yaw)
+
     def image_callback(self, msg: Image):
         image = self._image_msg_to_rgb(msg)
         if image is None:
@@ -293,18 +317,42 @@ class OpenPilotControllerNode(Node):
         self.inference_times.append((time.monotonic() - started) * 1000.0)
 
         self._latest = (action, now)
+        self._update_calibration(action)
 
         stamp = now.to_msg()
         if self.pub_markers is not None:
             self.pub_markers.publish(
                 build_markers(action, stamp, self.frame_config, frame_id=self.output_frame))
         if self.pub_trajectory is not None:
-            self.pub_trajectory.publish(
-                build_trajectory(action, stamp, self.frame_config, frame_id=self.output_frame,
-                                 max_speed=self.core.control.max_speed))
+            if self.output_frame != 'base_link' and self._ego_pose is None:
+                self.get_logger().warn(
+                    f"no odometry yet; cannot emit the trajectory in '{self.output_frame}'",
+                    throttle_duration_sec=5.0)
+            else:
+                self.pub_trajectory.publish(
+                    build_trajectory(action, stamp, self.frame_config, frame_id=self.output_frame,
+                                     max_speed=self.core.control.max_speed,
+                                     ego_pose=None if self.output_frame == 'base_link' else self._ego_pose))
         self._publish_debug_image(action, image, stamp, msg.header.frame_id)
 
         self._log_performance_metrics()
+
+    def _update_calibration(self, action):
+        """Feed the model's pose to the calibrator and apply what it settles on."""
+        if self.calibrator is None:
+            return
+        rpy = self.calibrator.handle_pose(action.pose[:3], action.pose[3:],
+                                          action.pose_std[:3], self.v_ego)
+        if rpy is None:
+            return
+        if not np.allclose(rpy, self.core.calib_euler, atol=1e-4):
+            self.core.set_calibration_euler(rpy)
+        if self.calibrator.calibrated and not self._calibration_reported:
+            self._calibration_reported = True
+            self.get_logger().info(
+                f'camera calibrated from the model pose: pitch {rpy[1]:+.4f} rad '
+                f'({np.degrees(rpy[1]):+.2f} deg), yaw {rpy[2]:+.4f} rad '
+                f'({np.degrees(rpy[2]):+.2f} deg)')
 
     # Frames to run before timing anything: the first CUDA inferences and the rest
     # of the stack coming up are far slower than the steady state, and sampling them

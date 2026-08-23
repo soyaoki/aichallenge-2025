@@ -27,6 +27,11 @@
       # at z=0.7. Only used to drop the predicted path onto the road in the debug
       # image, the way openpilot's own renderer does.
       height: 0.7
+      # Estimate calib_pitch / calib_yaw while driving straight, from the ego motion
+      # the model predicts, the way openpilot's calibrationd does. The calib_* values
+      # above are the starting point. Needs ~500 straight, fast frames to converge.
+      auto_calibration: true
+      calibration_min_speed: 3.0
 
     output:
       # direct_action: publish AckermannControlCommand from the model's action.
@@ -43,8 +48,10 @@
       # camera: the untouched camera image with the prediction projected onto it.
       debug_image_source: "model_input"
       debug_image_scale: 2
-      # Publish every Nth frame when the debug image costs too much.
-      debug_image_decimation: 1
+      # The debug image costs more than the inference does (two warps, the drawing
+      # and a 1.5 MB message), and it shares a thread with inference, so publishing
+      # it every frame drags the whole pipeline down. Every 5th is enough to watch.
+      debug_image_decimation: 5
 
     # comma's device frame is x->forward, y->right, z->down; base_link is
     # x->forward, y->left, z->up. Confirm against a real drive before trusting it.
@@ -73,12 +80,14 @@
       long_delay: 0.2
       lat_smooth_seconds: 0.0
       long_smooth_seconds: 0.3
-      # ISO-derived envelope from openpilot. The defaults are road-car limits and
-      # are conservative for a racing kart; raise them once the model tracks well.
+      # Safety envelope on top of the model output. openpilot's own numbers are
+      # road-car limits (0.2 / 5.0 / 3.0) and clip a kart to less than half of what
+      # it can physically do: with wheel_base 1.087 m and 0.442 rad of steering the
+      # kinematic limit is tan(0.442)/1.087 = 0.44 1/m.
       apply_curvature_limits: true
-      max_curvature: 0.2
-      max_lateral_jerk: 5.0
-      max_lateral_accel: 3.0
+      max_curvature: 0.44
+      max_lateral_jerk: 20.0
+      max_lateral_accel: 8.0
       max_acceleration: 2.0
       max_deceleration: -4.0
       max_speed: 30.0

@@ -191,6 +191,24 @@ python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
   実測の処理レートから自動で決まる。
 - GPU を使う場合は `make openpilot-gpu-deps` でイメージを再ビルドしておく
   (onnxruntime の CUDA provider には cuDNN 9 と CUDA ランタイムが要る)。
+- **デバッグ画像は推論より重い。** 毎フレーム publish するとパイプラインが
+  9.5 → 2.3 frames/s まで落ち、モデルが積む 2 フレームの間隔が 435 ms になる。
+  既定の `debug_image_decimation: 5` を下げるときは `frames/s` のログを見ること。
+
+## キャリブレーション
+
+`camera.auto_calibration` を有効にすると、openpilot の `calibrationd` と同じ方法で
+取り付け角を走行中に推定する。モデルが出す自車並進 (`pose[:3]`) の向きが本来
+カメラ光軸と一致するはずなので、そのズレが取り付け誤差になる。
+
+```
+observed = [0, -atan2(trans_z, trans_x), atan2(trans_y, trans_x)]
+```
+
+直進かつ `calibration_min_speed` 以上、ヨーレート 2 deg/s 未満のフレームのみ採用し、
+100 フレーム × 5 ブロックで収束。**AWSIM のカートではこの条件を満たす直進が続かず、
+現状は収束しない。** 手で詰める場合は `scripts/render_debug_image.py --calib-pitch`
+で AWSIM のスクショに対して掃引する。
 
 ## 既知の制約
 
@@ -200,9 +218,19 @@ python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
 - モデルは実車の走行映像で学習されており、AWSIM のレース環境はドメイン外。
   カメラ内部パラメータと取り付け角を合わせないと妥当な出力にならない。
 - desire 入力は常にゼロ (車線変更プランナは無い)。
-- 実走ではコースを外れて壁に接触する。低解像度・分布外の入力に対してモデルの
-  確信度が低く、曲率が上限に張り付きやすい。まずカメラ解像度と
-  `camera.calib_pitch` を詰めるのが先。
+- 実走ではコースを外れて壁に接触する。実測 (110 秒):
+
+  | 構成 | 走行距離 | 最高速 |
+  |---|---|---|
+  | `direct_action` (上限緩和) | 174 m | 3.16 m/s |
+  | `trajectory` + pure_pursuit | 155 m | 1.39 m/s |
+
+- **AWSIM のカメラ解像度は AWSIM のビルドに焼き込まれており、CLI で変更できない。**
+  水平 90 度を 384 px で見るため角度分解能は 0.23 deg/px。openpilot 実機 (焦点距離
+  2648) の 0.022 deg/px に対して約 10 倍粗い。さらにモデルフレームが使うのは水平の
+  約 28 % (108 px) で、これを 512 px に引き伸ばしている。リサイズでは情報は戻らない。
+- AWSIM のカート環境に対してモデルの車線確率は 0.00〜0.04 しか出ない。
+  取り付け角を掃引しても変わらないので、これは調整の問題ではなく分布外の問題。
 - 固定した `driving_supercombo.onnx` の `output_slices` には `action` 出力が**無い**。
   そのため openpilot 本体と同じく `plan` から desired curvature / acceleration を
   導出している (`get_curvature_from_plan` / `get_accel_from_plan`)。

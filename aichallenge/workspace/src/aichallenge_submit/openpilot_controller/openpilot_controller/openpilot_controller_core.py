@@ -87,6 +87,10 @@ class Action:
     road_edges: np.ndarray = field(
         default_factory=_zeros(ModelConstants.NUM_ROAD_EDGES, ModelConstants.IDX_N, 2))
 
+    # Ego motion in the calibrated frame: translation velocity then rotation rate.
+    pose: np.ndarray = field(default_factory=_zeros(ModelConstants.POSE_WIDTH))
+    pose_std: np.ndarray = field(default_factory=_zeros(ModelConstants.POSE_WIDTH))
+
 
 class OpenPilotCore:
     """Stateful wrapper: camera image + ego speed -> desired action."""
@@ -212,6 +216,8 @@ class OpenPilotCore:
             # Two values per lane line; upstream's laneLineProbs takes the odd ones.
             lane_lines_prob=outputs['lane_lines_prob'][0][1::2],
             road_edges=outputs['road_edges'][0],
+            pose=outputs['pose'][0],
+            pose_std=outputs['pose_stds'][0],
         )
         self.prev_action = action
         return action

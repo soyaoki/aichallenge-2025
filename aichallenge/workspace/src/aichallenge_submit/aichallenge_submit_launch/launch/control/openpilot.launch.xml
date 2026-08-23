@@ -8,8 +8,13 @@
   <!-- Observation only by default: check /openpilot/debug/markers in RViz first. -->
   <arg name="control_enabled" default="false"/>
   <arg name="trajectory_topic" default="/openpilot/trajectory"/>
+  <!-- Autoware controllers compare a trajectory against the odometry pose, which is
+       in map, so trajectory mode emits map rather than base_link. -->
+  <let name="output_frame" value="base_link"/>
+  <let name="output_frame" value="map" if="$(eval &quot;'$(var output_mode)' == 'trajectory'&quot;)"/>
 
   <include file="$(find-pkg-share openpilot_controller)/launch/openpilot.launch.xml">
+    <arg name="output_frame" value="$(var output_frame)"/>
     <arg name="model_path" value="$(var model_path)"/>
     <arg name="provider" value="$(var provider)"/>
     <arg name="output_mode" value="$(var output_mode)"/>
@@ -20,4 +25,20 @@
     <arg name="control_cmd_topic" value="/control/command/control_cmd"/>
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
   </include>
+
+  <!-- comma as the planner, one of the challenge controllers as the follower. -->
+  <group if="$(eval &quot;'$(var output_mode)' == 'trajectory'&quot;)">
+    <node pkg="simple_pure_pursuit" exec="simple_pure_pursuit" name="openpilot_trajectory_follower" output="screen">
+      <param name="use_sim_time" value="$(var use_sim_time)"/>
+      <param name="wheel_base" value="1.087"/>
+      <param name="use_external_target_vel" value="false"/>
+      <param name="lookahead_gain" value="0.5"/>
+      <param name="lookahead_min_distance" value="3.5"/>
+      <param name="speed_proportional_gain" value="1.0"/>
+      <param name="steering_tire_angle_gain" value="1.50"/>
+      <remap from="input/kinematics" to="/localization/kinematic_state"/>
+      <remap from="input/trajectory" to="$(var trajectory_topic)"/>
+      <remap from="output/control_cmd" to="/control/command/control_cmd"/>
+    </node>
+  </group>
 </launch>

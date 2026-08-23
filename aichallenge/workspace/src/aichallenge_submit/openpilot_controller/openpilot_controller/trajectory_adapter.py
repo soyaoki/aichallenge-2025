@@ -9,8 +9,14 @@ from openpilot_controller.model_constants import ModelConstants
 
 
 def build_trajectory(action, stamp, frame_config: FrameConfig,
-                     frame_id: str = 'base_link', max_speed: float = float('inf')) -> Trajectory:
-    """Turn a prediction into a trajectory the challenge controllers can follow."""
+                     frame_id: str = 'base_link', max_speed: float = float('inf'),
+                     ego_pose=None) -> Trajectory:
+    """Turn a prediction into a trajectory the challenge controllers can follow.
+
+    The plan is relative to the vehicle, so it is built in ``base_link``. Autoware's
+    controllers compare a trajectory against the odometry pose, which lives in
+    ``map``, so pass ``ego_pose`` (x, y, z, yaw) to emit it there instead.
+    """
     trajectory = Trajectory()
     trajectory.header.stamp = stamp
     trajectory.header.frame_id = frame_id
@@ -19,6 +25,16 @@ def build_trajectory(action, stamp, frame_config: FrameConfig,
     yaws = action.path_yaw * frame_config.yaw_sign
     yaw_rates = action.path_yaw_rate * frame_config.yaw_sign
     speeds = np.clip(action.path_speed, 0.0, max_speed)
+
+    if ego_pose is not None:
+        ego_x, ego_y, ego_z, ego_yaw = ego_pose
+        cos_yaw, sin_yaw = np.cos(ego_yaw), np.sin(ego_yaw)
+        rotated = np.empty_like(positions)
+        rotated[:, 0] = ego_x + cos_yaw * positions[:, 0] - sin_yaw * positions[:, 1]
+        rotated[:, 1] = ego_y + sin_yaw * positions[:, 0] + cos_yaw * positions[:, 1]
+        rotated[:, 2] = ego_z + positions[:, 2]
+        positions = rotated
+        yaws = yaws + ego_yaw
 
     for index, t in enumerate(ModelConstants.T_IDXS):
         point = TrajectoryPoint()
