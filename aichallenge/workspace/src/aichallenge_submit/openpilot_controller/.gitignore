@@ -1,2 +1,4 @@
 # Downloaded by scripts/download_models.bash (`make openpilot-models`).
 models/*.onnx
+# Reference footage cached by scripts/verify_against_real_footage.py.
+models/*.hevc
