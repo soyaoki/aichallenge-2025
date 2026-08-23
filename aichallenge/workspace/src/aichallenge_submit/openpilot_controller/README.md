@@ -232,6 +232,19 @@ OPENPILOT_OBSERVE=true docker compose up -d autoware   # MPC が走り openpilot
 手で詰める場合は `scripts/render_debug_image.py --calib-pitch` で AWSIM の
 スクショに対して掃引する。
 
+## 統合が壊れていないことの確認
+
+AWSIM の中からでは、ワープのバグも出力 slice のズレも「モデルが何も出さない」と
+いう同じ症状に見える。内部パラメータが確定している実データに同じコードを流せば
+切り分けられる (初回のみ 37 MB ダウンロード)。
+
+```bash
+python3 .../scripts/verify_against_real_footage.py
+```
+
+自車線の車線確率が 0.5 を下回ったら失敗として終了するので、前処理を壊す変更が
+「難しいシーンだった」で見逃されない。
+
 ## 既知の制約
 
 - openpilot は road カメラと wide カメラの 2 系統を前提とするが、ここでは 1 台の
@@ -248,9 +261,13 @@ OPENPILOT_OBSERVE=true docker compose up -d autoware   # MPC が走り openpilot
   `launch_speed` で自分が押しているだけでモデルの走行ではない。既定は
   「発進したら引き渡す」にしてある (`control.launch_rearm_sec`)。
 
-- **パイプラインは正しい (対照実験済み)。** 実写の道路画像を hfov 45〜55 度と仮定して
-  同じ経路に流すと、車線確率 0.44〜0.49、車線の標準偏差 0.7〜1.2 m まで出る。
-  AWSIM ではそれぞれ 0.02、3.4〜4.4 m。
+- **パイプラインは正しい (実データで検証済み)。**
+  `scripts/verify_against_real_footage.py` が openpilot の CI 公開セグメント
+  (neo カメラ 1164x874 / f=910 / 20 fps、内部パラメータが確定している) を落として
+  同じ経路に流す。結果は車線確率 [0.90, 0.99, 0.97, 0.69]、自車線平均 0.98、
+  車線の標準偏差 0.13 m (最良 0.06 m) ＝ openpilot が正常動作しているときの水準。
+  同じコードで AWSIM は車線確率 0.02、標準偏差 4.9 m で **平均 60 倍の差**。
+  ワープ・YUV パッキング・時系列スタック・出力 slice はすべて正しい。
 - **限界要因は解像度ではなくシーンの中身。** 実写道路を段階的に粗くしても車線確率は
   保たれる (0.048 deg/px で 0.13、AWSIM より粗い 0.250 deg/px でも 0.15) のに対し、
   AWSIM は 0.234 deg/px で 0.020。同じ粗さで 6〜13 倍の差が残る。AWSIM のカメラ
