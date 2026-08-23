@@ -98,18 +98,38 @@ class SupercomboRunner:
         self.frame_height, self.frame_width = img_shape[2], img_shape[3]
         self.frame_skip = ModelConstants.MODEL_RUN_FREQ // ModelConstants.MODEL_CONTEXT_FREQ
 
-        feature_shape = self.input_shapes['features_buffer']  # (1, 24, 512)
-        desire_shape = self.input_shapes['desire_pulse']      # (1, 25, 8)
+        self.feature_shape = self.input_shapes['features_buffer']  # (1, 24, 512)
+        self.desire_shape = self.input_shapes['desire_pulse']      # (1, 25, 8)
 
+        self.prev_feat = np.zeros(self.feature_shape[2], dtype=np.float32)
+        self.prev_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
+        self.parser = Parser()
+        self._allocate_queues()
+
+    def _allocate_queues(self) -> None:
         img_queue_len = self.frame_skip * (self.n_frames - 1) + 1
         self.img_q = np.zeros((img_queue_len, 6, self.frame_height, self.frame_width), dtype=np.uint8)
         self.big_img_q = np.zeros_like(self.img_q)
-        self.feat_q = np.zeros((self.frame_skip * feature_shape[1], feature_shape[2]), dtype=np.float32)
-        self.desire_q = np.zeros((self.frame_skip * desire_shape[1], desire_shape[2]), dtype=np.float32)
+        self.feat_q = np.zeros((self.frame_skip * self.feature_shape[1], self.feature_shape[2]),
+                               dtype=np.float32)
+        self.desire_q = np.zeros((self.frame_skip * self.desire_shape[1], self.desire_shape[2]),
+                                 dtype=np.float32)
 
-        self.prev_feat = np.zeros(feature_shape[2], dtype=np.float32)
-        self.prev_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
-        self.parser = Parser()
+    def set_frame_skip(self, frame_skip: int) -> None:
+        """Retune how many steps separate the two stacked frames.
+
+        The network reads context at MODEL_CONTEXT_FREQ, so the pair of frames it
+        sees should be ~200 ms apart. Upstream runs at a fixed 20 Hz; when the
+        camera runs slower, a smaller skip keeps that spacing. Only the queues are
+        rebuilt, so this is cheap, but it drops the temporal history.
+        """
+        frame_skip = max(1, int(frame_skip))
+        if frame_skip == self.frame_skip:
+            return
+        self.frame_skip = frame_skip
+        self._allocate_queues()
+        self.prev_feat[:] = 0
+        self.prev_desire[:] = 0
 
     @property
     def model_frame_shape(self):

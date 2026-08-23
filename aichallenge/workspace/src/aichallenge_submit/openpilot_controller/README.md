@@ -69,6 +69,9 @@ renderer と同じ扱い)。
 ### Phase 2: 制御に接続
 
 ```bash
+# 環境変数でも切り替えられる (docker compose 経由)
+CONTROL_METHOD=openpilot OPENPILOT_CONTROL_ENABLED=true docker compose up -d autoware
+
 # A. モデルの action を直接 control_cmd にする
 ros2 launch ... control_method:=openpilot openpilot_control_enabled:=true
 
@@ -172,6 +175,23 @@ python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
 | `control.apply_curvature_limits` | 上記の安全包絡線を無効化する場合は `false` |
 | `vehicle.wheel_base` | 曲率 → 操舵角の変換に使う。racing kart は 1.087 m |
 
+## AWSIM で走らせるときの注意
+
+`make simulator-openpilot` (`aichallenge/simulator_scripts/openpilot.sh`) が
+1台・NPC なし・カメラ有効の最小構成。立ち上げで踏んだ落とし穴:
+
+- **AWSIM は `longitudinal.speed` を追従する。** acceleration だけ出しても動かない。
+  停止状態ではモデルが shouldStop を返すので目標速度が 0 のままになり、永久に
+  発進しない。`control.launch_speed` / `launch_acceleration` がこれを破る。
+- **壁に当たると `--wall-recovery off` では永久に固着する。** 立ち上げ中に
+  「動かない」の切り分けが不可能になるので、このプリセットは復帰を有効にしている。
+- **AWSIM のカメラは 384x256・約 10 Hz** で、openpilot 実機 (1928x1208 / 20 Hz) から
+  大きく外れる。内部パラメータは `camera_info` から取れる (fx=192, fy=227.4)。
+  モデルが積む 2 フレームの間隔は `model.frame_skip` で調整され、既定 (0) では
+  実測の処理レートから自動で決まる。
+- GPU を使う場合は `make openpilot-gpu-deps` でイメージを再ビルドしておく
+  (onnxruntime の CUDA provider には cuDNN 9 と CUDA ランタイムが要る)。
+
 ## 既知の制約
 
 - openpilot は road カメラと wide カメラの 2 系統を前提とするが、ここでは 1 台の
@@ -180,6 +200,9 @@ python3 .../scripts/render_debug_image.py --image frame.png --calib-pitch 0.03
 - モデルは実車の走行映像で学習されており、AWSIM のレース環境はドメイン外。
   カメラ内部パラメータと取り付け角を合わせないと妥当な出力にならない。
 - desire 入力は常にゼロ (車線変更プランナは無い)。
+- 実走ではコースを外れて壁に接触する。低解像度・分布外の入力に対してモデルの
+  確信度が低く、曲率が上限に張り付きやすい。まずカメラ解像度と
+  `camera.calib_pitch` を詰めるのが先。
 - 固定した `driving_supercombo.onnx` の `output_slices` には `action` 出力が**無い**。
   そのため openpilot 本体と同じく `plan` から desired curvature / acceleration を
   導出している (`get_curvature_from_plan` / `get_accel_from_plan`)。

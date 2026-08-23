@@ -25,6 +25,10 @@ x-autoware-base: &autoware-base
     - LOG_DIR=${LOG_DIR:-}
     # openpilot_controller の onnxruntime provider (auto | cpu | cuda | tensorrt)
     - OPENPILOT_PROVIDER=${OPENPILOT_PROVIDER:-}
+    # reference.launch.xml の制御方式選択と openpilot の動作モード
+    - CONTROL_METHOD=${CONTROL_METHOD:-}
+    - OPENPILOT_CONTROL_ENABLED=${OPENPILOT_CONTROL_ENABLED:-}
+    - OPENPILOT_OUTPUT_MODE=${OPENPILOT_OUTPUT_MODE:-}
   volumes:
     - ./output:${OUTPUT_ROOT:-/output}
     - ./aichallenge:/aichallenge

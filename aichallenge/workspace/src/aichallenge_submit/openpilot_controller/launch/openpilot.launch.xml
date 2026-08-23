@@ -14,17 +14,20 @@
   <arg name="output_mode" default="direct_action"/>
   <!-- Observation only until this is true: markers are published either way. -->
   <arg name="control_enabled" default="false"/>
-  <!-- Isolated cuDNN 9 prefix for onnxruntime's CUDA provider, populated by
-       `make openpilot-gpu-deps`. Scoped to this node so it cannot shadow the
-       cuDNN 8 that PyTorch bundles. Harmless when the directory is absent. -->
+  <!-- onnxruntime's CUDA provider needs cuDNN 9 plus the CUDA runtime libraries.
+       cuDNN 9 lives in an isolated prefix (`make openpilot-gpu-deps`) and must come
+       first so it wins over the cuDNN 8 PyTorch pins; the rest are PyTorch's own
+       nvidia wheels. Scoped to this node, and harmless when the paths are absent. -->
   <arg name="cudnn_prefix" default="/opt/openpilot-cudnn9/nvidia/cudnn/lib"/>
+  <arg name="cuda_lib_prefix" default="/usr/local/lib/python3.10/dist-packages/nvidia"/>
+  <let name="cuda_lib_path" value="$(var cuda_lib_prefix)/cublas/lib:$(var cuda_lib_prefix)/cuda_runtime/lib:$(var cuda_lib_prefix)/cuda_nvrtc/lib:$(var cuda_lib_prefix)/cufft/lib:$(var cuda_lib_prefix)/curand/lib:$(var cuda_lib_prefix)/nvjitlink/lib"/>
 
   <node pkg="openpilot_controller"
         exec="openpilot_controller_node.py"
         name="openpilot_controller_node"
         output="screen">
 
-    <env name="LD_LIBRARY_PATH" value="$(var cudnn_prefix):$(env LD_LIBRARY_PATH '')"/>
+    <env name="LD_LIBRARY_PATH" value="$(var cudnn_prefix):$(var cuda_lib_path):$(env LD_LIBRARY_PATH '')"/>
 
     <param from="$(var openpilot_node_param)"/>
     <param name="model.path" value="$(var model_path)"/>

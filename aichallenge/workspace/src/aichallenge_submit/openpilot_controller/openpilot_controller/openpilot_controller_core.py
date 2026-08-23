@@ -132,6 +132,9 @@ class OpenPilotCore:
     def device_from_calib(self) -> np.ndarray:
         return rot_from_euler(self.calib_euler)
 
+    def set_frame_skip(self, frame_skip: int) -> None:
+        self.runner.set_frame_skip(frame_skip)
+
     def reset(self) -> None:
         self.runner.reset()
         self.prev_action = Action()

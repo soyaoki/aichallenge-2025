@@ -61,6 +61,13 @@
       publish_rate_hz: 20.0
       command_timeout_sec: 0.5
       timeout_deceleration: -2.0
+      # AWSIM tracks longitudinal.speed, and the model reports shouldStop at a
+      # standstill (its training data has a driver pressing the gas to depart), so
+      # the requested speed would stay at zero and pin the kart at the start line.
+      # Below launch_speed we pull away ourselves; set launch_speed to 0 to let the
+      # model decide from a stop.
+      launch_speed: 3.0
+      launch_acceleration: 1.5
       # Actuator delays the model plans for [s].
       lat_delay: 0.2
       long_delay: 0.2

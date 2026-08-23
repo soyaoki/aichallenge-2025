@@ -39,6 +39,7 @@ from openpilot_controller.debug_image import build_debug_image
 from openpilot_controller.debug_publisher import build_markers
 from openpilot_controller.drive_helpers import DT_MDL
 from openpilot_controller.frames import FrameConfig
+from openpilot_controller.model_constants import ModelConstants
 from openpilot_controller.openpilot_controller_core import ControlConfig, OpenPilotCore
 from openpilot_controller.trajectory_adapter import build_trajectory
 
@@ -53,6 +54,9 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('model.sha256', '')
         self.declare_parameter('model.provider', 'auto')
         self.declare_parameter('model.intra_op_threads', 0)
+        # Steps between the two frames the network stacks. 0 measures the camera
+        # rate and picks the skip that lands closest to the model's context period.
+        self.declare_parameter('model.frame_skip', 0)
 
         self.declare_parameter('camera.hfov_deg', 60.0)
         self.declare_parameter('camera.use_camera_info', True)
@@ -91,6 +95,11 @@ class OpenPilotControllerNode(Node):
         self.declare_parameter('control.max_speed', 30.0)
         self.declare_parameter('control.is_rhd', True)
         self.declare_parameter('control.timeout_deceleration', -2.0)
+        # The model is trained for a car whose driver presses the gas to depart. From
+        # a standstill it reports shouldStop, which would hold the kart at the line
+        # forever, so pull away under our own power until the model has motion to see.
+        self.declare_parameter('control.launch_speed', 2.0)
+        self.declare_parameter('control.launch_acceleration', 1.0)
 
         self.declare_parameter('vehicle.wheel_base', 1.087)
         self.declare_parameter('vehicle.max_steering_tire_angle', 0.442)
@@ -157,6 +166,9 @@ class OpenPilotControllerNode(Node):
         self.max_steer = float(self.get_parameter('vehicle.max_steering_tire_angle').value)
         self.command_timeout = float(self.get_parameter('control.command_timeout_sec').value)
         self.timeout_decel = float(self.get_parameter('control.timeout_deceleration').value)
+        self.launch_speed = float(self.get_parameter('control.launch_speed').value)
+        self.launch_acceleration = float(self.get_parameter('control.launch_acceleration').value)
+        self._launched = False
         self.debug = bool(self.get_parameter('debug').value)
         self.log_interval = float(self.get_parameter('log_interval_sec').value)
 
@@ -165,6 +177,11 @@ class OpenPilotControllerNode(Node):
         # an action paired with the wrong timestamp.
         self._latest = None
         self.last_image_time = None
+        self.frame_skip_param = int(self.get_parameter('model.frame_skip').value)
+        if self.frame_skip_param > 0:
+            self.core.set_frame_skip(self.frame_skip_param)
+        self._frame_periods = []
+        self._warmup_frames = 0
         self.inference_times = []
         self.last_log_time = self.get_clock().now()
 
@@ -180,8 +197,10 @@ class OpenPilotControllerNode(Node):
         self.create_subscription(Image, '/image_raw', self.image_callback, sensor_qos,
                                  callback_group=self.inference_group)
         if self.use_camera_info:
+            # Not in the inference group: a busy inference callback would starve it
+            # and the node would run on the fallback FOV forever.
             self.create_subscription(CameraInfo, '/camera_info', self.camera_info_callback,
-                                     sensor_qos, callback_group=self.inference_group)
+                                     sensor_qos, callback_group=self.control_group)
         self.create_subscription(VelocityReport, '/vehicle/status/velocity_status',
                                  self.velocity_callback, sensor_qos,
                                  callback_group=self.control_group)
@@ -262,6 +281,7 @@ class OpenPilotControllerNode(Node):
             measured = (now - self.last_image_time).nanoseconds / 1e9
             if 0.0 < measured < 1.0:
                 dt = measured
+                self._tune_frame_skip(measured)
         self.last_image_time = now
 
         started = time.monotonic()
@@ -285,6 +305,40 @@ class OpenPilotControllerNode(Node):
         self._publish_debug_image(action, image, stamp, msg.header.frame_id)
 
         self._log_performance_metrics()
+
+    # Frames to run before timing anything: the first CUDA inferences and the rest
+    # of the stack coming up are far slower than the steady state, and sampling them
+    # would lock in a skip that is much too small.
+    FRAME_SKIP_WARMUP = 40
+    FRAME_SKIP_SAMPLES = 40
+
+    def _tune_frame_skip(self, period: float):
+        """Match the stacked-frame spacing to the rate frames actually get processed.
+
+        The two frames the network stacks are `frame_skip` processed frames apart,
+        so the spacing depends on the pipeline rate, not just the camera rate.
+        Measured once, after warmup, because retuning later would drop the
+        temporal history mid-drive.
+        """
+        if self.frame_skip_param > 0 or self._frame_periods is None:
+            return
+        if self._warmup_frames < self.FRAME_SKIP_WARMUP:
+            self._warmup_frames += 1
+            return
+        self._frame_periods.append(period)
+        if len(self._frame_periods) < self.FRAME_SKIP_SAMPLES:
+            return
+        median = float(np.median(self._frame_periods))
+        self._frame_periods = None
+        context_period = 1.0 / ModelConstants.MODEL_CONTEXT_FREQ
+        skip = int(np.clip(round(context_period / median), 1, 8))
+        current = self.core.runner.frame_skip
+        self.get_logger().info(
+            f'processing {1.0 / median:.1f} frames/s; the network wants its two frames '
+            f'~{context_period * 1000:.0f} ms apart, so frame_skip {current} -> {skip} '
+            f'({skip * median * 1000:.0f} ms)')
+        if skip != current:
+            self.core.set_frame_skip(skip)
 
     def _publish_debug_image(self, action, camera_rgb, stamp, frame_id: str):
         if self.pub_debug_image is None:
@@ -349,8 +403,23 @@ class OpenPilotControllerNode(Node):
 
         steering = math.atan(self.wheel_base * action.desired_curvature)
         acceleration = action.desired_acceleration
-        if action.should_stop:
+        target_speed = action.target_speed
+        launching = self.launch_speed > 0.0 and self.v_ego < self.launch_speed
+        if launching:
+            # AWSIM tracks longitudinal.speed, so a zero speed request pins the kart
+            # in place no matter what acceleration says.
+            acceleration = max(acceleration, self.launch_acceleration)
+            target_speed = max(target_speed, self.launch_speed)
+            if not self._launched:
+                self._launched = True
+                self.get_logger().info(
+                    f'below {self.launch_speed:.1f} m/s: pulling away at {self.launch_speed:.1f} m/s '
+                    'until the model has motion to work with')
+        elif action.should_stop:
             acceleration = min(acceleration, self.core.control.max_deceleration)
+            target_speed = 0.0
+        else:
+            self._launched = False
 
         if not (math.isfinite(steering) and math.isfinite(acceleration)):
             self.get_logger().error('model produced a non-finite command; braking',
@@ -358,13 +427,17 @@ class OpenPilotControllerNode(Node):
             self._publish_safe_stop(command)
             return
 
-        command.longitudinal.speed = float(action.target_speed)
+        command.longitudinal.stamp = command.stamp
+        command.longitudinal.speed = float(min(target_speed, self.core.control.max_speed))
         command.longitudinal.acceleration = float(acceleration)
+        command.lateral.stamp = command.stamp
         command.lateral.steering_tire_angle = float(
             max(-self.max_steer, min(self.max_steer, steering)))
         self.pub_control.publish(command)
 
     def _publish_safe_stop(self, command: AckermannControlCommand):
+        command.longitudinal.stamp = command.stamp
+        command.lateral.stamp = command.stamp
         command.longitudinal.speed = 0.0
         command.longitudinal.acceleration = self.timeout_decel
         command.lateral.steering_tire_angle = 0.0

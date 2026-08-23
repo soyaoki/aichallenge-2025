@@ -21,7 +21,9 @@
   <log message="echo launch param use_sim_time: $(var use_sim_time) launch_vehicle_interface: $(var launch_vehicle_interface) sensor_model: $(var sensor_model)"/>
 
   <!-- Control method -->
-  <arg name="control_method" default="mpc"
+  <!-- Overridable from the environment so a run can switch controllers without editing this
+       file. The `or` guards the empty string Compose passes for an unset variable. -->
+  <arg name="control_method" default="$(eval &quot;'$(env CONTROL_METHOD mpc)' or 'mpc'&quot;)"
       description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, openpilot, joycon, rl_train"/>
 
   <!-- Global parameters -->
@@ -165,8 +167,8 @@
 
   <!-- openpilot starts in observation mode: the predicted path is published as
        markers but no control command is sent until openpilot_control_enabled is true. -->
-  <arg name="openpilot_control_enabled" default="false"/>
-  <arg name="openpilot_output_mode" default="direct_action" description="direct_action or trajectory"/>
+  <arg name="openpilot_control_enabled" default="$(eval &quot;'$(env OPENPILOT_CONTROL_ENABLED false)' or 'false'&quot;)"/>
+  <arg name="openpilot_output_mode" default="$(eval &quot;'$(env OPENPILOT_OUTPUT_MODE direct_action)' or 'direct_action'&quot;)" description="direct_action or trajectory"/>
   <group if="$(eval &quot;'$(var control_method)' == 'openpilot'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/openpilot.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
