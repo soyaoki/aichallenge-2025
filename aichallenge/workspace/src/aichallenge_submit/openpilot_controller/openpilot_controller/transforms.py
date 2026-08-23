@@ -78,11 +78,17 @@ def get_warp_matrix(device_from_calib_euler, intrinsics, bigmodel_frame: bool = 
 
 
 def rgb_to_yuv_planes(rgb: np.ndarray):
-    """(H, W, 3) uint8 RGB -> (Y, U, V) planes, U/V at half resolution."""
+    """(H, W, 3) uint8 RGB -> (Y, U, V) planes, U/V at half resolution.
+
+    I420 packs each chroma plane as H/4 rows of W, which only reshapes to
+    (H/2, W/2) when the height is a multiple of 4, so crop to that.
+    """
     height, width = rgb.shape[:2]
-    if height % 2 or width % 2:
-        rgb = rgb[:height - (height % 2), :width - (width % 2)]
+    if height % 4 or width % 2:
+        rgb = rgb[:height - (height % 4), :width - (width % 2)]
         height, width = rgb.shape[:2]
+    if height < 4 or width < 2:
+        raise ValueError(f"image too small after alignment: {width}x{height}")
     i420 = cv2.cvtColor(rgb, cv2.COLOR_RGB2YUV_I420)
     y = i420[:height]
     uv_rows = height // 4
